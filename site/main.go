@@ -303,6 +303,7 @@ func Page(data EncoderData) g.Node {
 			Meta(Name("viewport"), Content("width=device-width, initial-scale=1")),
 			TitleEl(g.Text("Rotary Encoder Monitor")),
 			Script(Src("https://unpkg.com/htmx.org@2.0.3/dist/htmx.min.js")),
+			Script(Src("https://cdn.plot.ly/plotly-2.27.0.min.js")),
 			StyleEl(g.Raw(`
 				body {
 					font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
@@ -422,6 +423,12 @@ func Page(data EncoderData) g.Node {
 				let plotInitialized = false;
 				
 				function updatePlot() {
+					const plotDiv = document.getElementById('plot3d');
+					if (!plotDiv) {
+						console.error('plot3d div not found');
+						return;
+					}
+					
 					if (typeof Plotly === 'undefined') {
 						console.log('Waiting for Plotly to load...');
 						setTimeout(updatePlot, 100);
@@ -456,6 +463,7 @@ func Page(data EncoderData) g.Node {
 									};
 									Plotly.newPlot('plot3d', [emptyTrace], layout);
 									plotInitialized = true;
+									console.log('Plot initialized (empty)');
 								}
 								return;
 							}
@@ -503,6 +511,7 @@ func Page(data EncoderData) g.Node {
 							if (!plotInitialized) {
 								Plotly.newPlot('plot3d', [trace], layout);
 								plotInitialized = true;
+								console.log('Plot initialized with data');
 							} else {
 								Plotly.update('plot3d', { x: [x], y: [y], z: [z] }, {}, [0]);
 							}
@@ -510,9 +519,15 @@ func Page(data EncoderData) g.Node {
 						.catch(err => console.error('Error updating plot:', err));
 				}
 				
-				// Wait for Plotly to load, then start updating
+				// Wait for DOM and Plotly to load, then start updating
 				function initPlot() {
+					if (document.readyState === 'loading') {
+						document.addEventListener('DOMContentLoaded', initPlot);
+						return;
+					}
+					
 					if (typeof Plotly !== 'undefined') {
+						console.log('Initializing plot...');
 						updatePlot();
 						setInterval(updatePlot, 200);
 					} else {
