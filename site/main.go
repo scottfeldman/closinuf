@@ -645,7 +645,13 @@ func plotSection() g.Node {
 			let startTime = Date.now();
 
 			function updatePlot() {
-				Plotly.redraw('plot3d');
+				// Use restyle to update only the data, preserving camera position
+				Plotly.restyle('plot3d', {
+					x: [plotData.x],
+					y: [plotData.y],
+					z: [plotData.z],
+					'marker.color': [plotData.marker.color]
+				}, [0]);
 			}
 
 			function addPoint(x, y, z, timestamp) {
@@ -694,7 +700,13 @@ func plotSection() g.Node {
 					addPoint(point.x, point.y, point.z, timestamp);
 				});
 
-				Plotly.newPlot('plot3d', [plotData], layout, config);
+				// Only create new plot if it doesn't exist, otherwise update
+				const plotExists = document.getElementById('plot3d').data !== undefined;
+				if (!plotExists) {
+					Plotly.newPlot('plot3d', [plotData], layout, config);
+				} else {
+					updatePlot();
+				}
 			}
 
 			// WebSocket connection
@@ -733,7 +745,7 @@ func plotSection() g.Node {
 			document.getElementById('timeWindow').addEventListener('input', function(e) {
 				timeWindow = parseInt(e.target.value);
 				document.getElementById('timeWindowValue').textContent = timeWindow + 's';
-				// Filter existing points
+				// Filter existing points based on new time window
 				const now = Date.now();
 				const filtered = {
 					x: [],
@@ -742,11 +754,16 @@ func plotSection() g.Node {
 					color: []
 				};
 				for (let i = 0; i < plotData.x.length; i++) {
-					if (plotData.marker.color[i] > 0) {
+					// Recalculate age for each point
+					const pointAge = plotData.marker.color[i] > 0 ? 
+						(1 - plotData.marker.color[i]) * timeWindow : timeWindow + 1;
+					if (pointAge <= timeWindow) {
 						filtered.x.push(plotData.x[i]);
 						filtered.y.push(plotData.y[i]);
 						filtered.z.push(plotData.z[i]);
-						filtered.color.push(plotData.marker.color[i]);
+						// Recalculate normalized age
+						const normalizedAge = Math.max(0, 1 - (pointAge / timeWindow));
+						filtered.color.push(normalizedAge);
 					}
 				}
 				plotData.x = filtered.x;
