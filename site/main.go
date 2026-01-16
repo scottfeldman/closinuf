@@ -285,23 +285,39 @@ func Page(data EncoderData) g.Node {
 					border-radius: 8px;
 					overflow: hidden;
 					box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+					table-layout: fixed;
 				}
 				.encoder-table thead {
 					background: #007bff;
 					color: white;
 				}
 				.encoder-table th {
-					padding: 1rem;
+					padding: 1.25rem 1.5rem;
 					text-align: left;
 					font-weight: 600;
 					text-transform: uppercase;
 					font-size: 0.85rem;
 					letter-spacing: 0.5px;
 				}
+				.encoder-table th:nth-child(1) {
+					width: 15%;
+				}
+				.encoder-table th:nth-child(2) {
+					width: 25%;
+				}
+				.encoder-table th:nth-child(3) {
+					width: 25%;
+				}
+				.encoder-table th:nth-child(4) {
+					width: 35%;
+				}
 				.encoder-table td {
-					padding: 0.75rem 1rem;
+					padding: 1rem 1.5rem;
 					border-bottom: 1px solid #e9ecef;
 					font-variant-numeric: tabular-nums;
+					white-space: nowrap;
+					overflow: hidden;
+					text-overflow: ellipsis;
 				}
 				.encoder-table tbody tr:last-child td {
 					border-bottom: none;
@@ -317,6 +333,8 @@ func Page(data EncoderData) g.Node {
 				.encoder-value {
 					font-size: 1.1rem;
 					color: #333;
+					display: inline-block;
+					min-width: 80px;
 				}
 				.encoder-unit {
 					font-size: 0.9rem;
