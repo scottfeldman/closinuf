@@ -9,15 +9,15 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
-	"github.com/warthog618/go-gpiocdev"
 	g "github.com/maragudk/gomponents"
 	hx "github.com/maragudk/gomponents-htmx"
 	. "github.com/maragudk/gomponents/html"
+	"github.com/warthog618/go-gpiocdev"
 )
 
 var (
-	counter       int       // total accumulated counts (signed for direction)
-	lastState     uint8     // previous A/B state (2 bits)
+	counter       int   // total accumulated counts (signed for direction)
+	lastState     uint8 // previous A/B state (2 bits)
 	lastReadTime  time.Time
 	lastReadCount int
 	rpm           float64
@@ -127,8 +127,8 @@ func main() {
 
 	// Serve static HTML page
 	app.Get("/", func(c *fiber.Ctx) error {
-		html := Page()
-		return c.Type("html").SendString(g.String(html))
+		c.Type("html")
+		return Page().Render(c)
 	})
 
 	// API endpoint to get encoder data (JSON)
@@ -150,8 +150,8 @@ func main() {
 		rpmValue := rpm
 		mu.RUnlock()
 
-		html := EncoderFragment(count, rpmValue)
-		return c.Type("html").SendString(g.String(html))
+		c.Type("html")
+		return EncoderFragment(count, rpmValue).Render(c)
 	})
 
 	// Start server in goroutine
@@ -175,7 +175,7 @@ func Page() g.Node {
 		Head(
 			Meta(Charset("utf-8")),
 			Meta(Name("viewport"), Content("width=device-width, initial-scale=1")),
-			Title(g.Text("Rotary Encoder Monitor")),
+			TitleEl(g.Text("Rotary Encoder Monitor")),
 			Script(Src("https://unpkg.com/htmx.org@2.0.3/dist/htmx.min.js")),
 			StyleEl(g.Raw(`
 				body {
@@ -230,7 +230,7 @@ func Page() g.Node {
 					hx.Trigger("every 200ms"),
 					hx.Swap("outerHTML"),
 					hx.Target("this"),
-					Id("encoder-data"),
+					ID("encoder-data"),
 					Div(Class("metric"),
 						Div(Class("metric-label"), g.Text("Count")),
 						Div(Class("metric-value"),
@@ -257,7 +257,7 @@ func EncoderFragment(count int, rpmValue float64) g.Node {
 		hx.Trigger("every 200ms"),
 		hx.Swap("outerHTML"),
 		hx.Target("this"),
-		Id("encoder-data"),
+		ID("encoder-data"),
 		Div(Class("metric"),
 			Div(Class("metric-label"), g.Text("Count")),
 			Div(Class("metric-value"),
