@@ -422,10 +422,43 @@ func Page(data EncoderData) g.Node {
 				let plotInitialized = false;
 				
 				function updatePlot() {
+					if (typeof Plotly === 'undefined') {
+						console.log('Waiting for Plotly to load...');
+						setTimeout(updatePlot, 100);
+						return;
+					}
+					
 					fetch('/api/encoder/history')
 						.then(response => response.json())
 						.then(data => {
-							if (data.length === 0) return;
+							if (data.length === 0) {
+								// Initialize empty plot if no data yet
+								if (!plotInitialized) {
+									const emptyTrace = {
+										x: [0],
+										y: [0],
+										z: [0],
+										mode: 'markers',
+										type: 'scatter3d',
+										marker: { size: 1, color: 'rgba(0,0,0,0)' },
+										name: 'Path'
+									};
+									const layout = {
+										title: '3D Encoder Path',
+										scene: {
+											xaxis: { title: 'X (mm)' },
+											yaxis: { title: 'Y (mm)' },
+											zaxis: { title: 'Z (mm)' },
+											camera: { eye: { x: 1.5, y: 1.5, z: 1.5 } }
+										},
+										margin: { l: 0, r: 0, t: 40, b: 0 },
+										height: 600
+									};
+									Plotly.newPlot('plot3d', [emptyTrace], layout);
+									plotInitialized = true;
+								}
+								return;
+							}
 							
 							const x = data.map(p => p.x);
 							const y = data.map(p => p.y);
@@ -471,22 +504,29 @@ func Page(data EncoderData) g.Node {
 								Plotly.newPlot('plot3d', [trace], layout);
 								plotInitialized = true;
 							} else {
-								Plotly.redraw('plot3d');
-								Plotly.update('plot3d', { x: [x], y: [y], z: [z] }, layout);
+								Plotly.update('plot3d', { x: [x], y: [y], z: [z] }, {}, [0]);
 							}
 						})
 						.catch(err => console.error('Error updating plot:', err));
 				}
 				
-				// Update plot every 200ms
-				setInterval(updatePlot, 200);
-				// Initial plot load
-				updatePlot();
+				// Wait for Plotly to load, then start updating
+				function initPlot() {
+					if (typeof Plotly !== 'undefined') {
+						updatePlot();
+						setInterval(updatePlot, 200);
+					} else {
+						setTimeout(initPlot, 100);
+					}
+				}
+				initPlot();
 			`)),
 		),
 		Body(
 			Div(Class("container"),
 				EncoderFragment(data),
+			),
+			Div(Class("container"),
 				Div(Class("plot-container"),
 					Div(ID("plot3d")),
 				),
