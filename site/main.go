@@ -23,7 +23,8 @@ type Encoder struct {
 	lastReadCount int
 	rpm           float64
 	label         string
-	mu            sync.RWMutex // protects this encoder's state
+	lines         *gpiocdev.Lines // GPIO lines for this encoder
+	mu            sync.RWMutex    // protects this encoder's state
 }
 
 var (
@@ -94,10 +95,9 @@ func main() {
 		enc.mu.Unlock()
 
 		func(enc *Encoder, offsetA, offsetB int, label string) {
-			var lines *gpiocdev.Lines
 			handler := func(evt gpiocdev.LineEvent) {
 				values := make([]int, 2)
-				if err := lines.Values(values); err != nil {
+				if err := enc.lines.Values(values); err != nil {
 					return
 				}
 
@@ -118,7 +118,7 @@ func main() {
 			}
 
 			var err error
-			lines, err = gpiocdev.RequestLines(chipName,
+			enc.lines, err = gpiocdev.RequestLines(chipName,
 				[]int{offsetA, offsetB},
 				gpiocdev.AsInput,
 				gpiocdev.WithPullUp,
@@ -129,8 +129,6 @@ func main() {
 			if err != nil {
 				// If GPIO fails, continue anyway (for development/testing)
 				// In production, you might want to exit or handle differently
-			} else {
-				defer lines.Close()
 			}
 		}(enc, cfg.offsetA, cfg.offsetB, cfg.label)
 	}
@@ -279,45 +277,51 @@ func Page(data EncoderData) g.Node {
 					margin-top: 0;
 					color: #333;
 				}
-				.encoders-grid {
-					display: grid;
-					grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-					gap: 1.5rem;
+				.encoder-table {
+					width: 100%;
+					border-collapse: collapse;
 					margin-bottom: 2rem;
-				}
-				.encoder-card {
-					padding: 1.5rem;
-					background: #f8f9fa;
+					background: white;
 					border-radius: 8px;
-					border-left: 4px solid #007bff;
+					overflow: hidden;
+					box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 				}
-				.encoder-label {
-					font-size: 1.2rem;
-					font-weight: bold;
-					color: #007bff;
-					margin-bottom: 1rem;
+				.encoder-table thead {
+					background: #007bff;
+					color: white;
+				}
+				.encoder-table th {
+					padding: 1rem;
+					text-align: left;
+					font-weight: 600;
 					text-transform: uppercase;
-				}
-				.metric {
-					margin: 1rem 0;
-				}
-				.metric-label {
-					font-size: 0.9rem;
-					color: #666;
-					text-transform: uppercase;
+					font-size: 0.85rem;
 					letter-spacing: 0.5px;
-					margin-bottom: 0.5rem;
 				}
-				.metric-value {
-					font-size: 2rem;
-					font-weight: bold;
-					color: #007bff;
+				.encoder-table td {
+					padding: 0.75rem 1rem;
+					border-bottom: 1px solid #e9ecef;
 					font-variant-numeric: tabular-nums;
 				}
-				.metric-unit {
-					font-size: 1rem;
+				.encoder-table tbody tr:last-child td {
+					border-bottom: none;
+				}
+				.encoder-table tbody tr:hover {
+					background: #f8f9fa;
+				}
+				.encoder-label {
+					font-weight: bold;
+					color: #007bff;
+					font-size: 1.1rem;
+				}
+				.encoder-value {
+					font-size: 1.1rem;
+					color: #333;
+				}
+				.encoder-unit {
+					font-size: 0.9rem;
 					color: #999;
-					margin-left: 0.5rem;
+					margin-left: 0.25rem;
 				}
 				.zero-button {
 					background: #dc3545;
@@ -358,10 +362,20 @@ func EncoderFragment(data EncoderData) g.Node {
 		hx.Swap("outerHTML"),
 		hx.Target("this"),
 		ID("encoder-data"),
-		Div(Class("encoders-grid"),
-			encoderCard("X", data.X),
-			encoderCard("Y", data.Y),
-			encoderCard("Z", data.Z),
+		Table(Class("encoder-table"),
+			THead(
+				Tr(
+					Th(g.Text("Encoder")),
+					Th(g.Text("Count")),
+					Th(g.Text("RPM")),
+					Th(g.Text("Distance")),
+				),
+			),
+			TBody(
+				encoderRow("X", data.X),
+				encoderRow("Y", data.Y),
+				encoderRow("Z", data.Z),
+			),
 		),
 		Div(Class("button-container"),
 			Button(
@@ -375,28 +389,27 @@ func EncoderFragment(data EncoderData) g.Node {
 	)
 }
 
-func encoderCard(label string, values EncoderValues) g.Node {
-	return Div(Class("encoder-card"),
-		Div(Class("encoder-label"), g.Text(label+" Encoder")),
-		Div(Class("metric"),
-			Div(Class("metric-label"), g.Text("Count")),
-			Div(Class("metric-value"),
+func encoderRow(label string, values EncoderValues) g.Node {
+	return Tr(
+		Td(
+			Span(Class("encoder-label"), g.Text(label)),
+		),
+		Td(
+			Span(Class("encoder-value"),
 				g.Textf("%d", values.Count),
-				Span(Class("metric-unit"), g.Text("counts")),
+				Span(Class("encoder-unit"), g.Text("counts")),
 			),
 		),
-		Div(Class("metric"),
-			Div(Class("metric-label"), g.Text("RPM")),
-			Div(Class("metric-value"),
+		Td(
+			Span(Class("encoder-value"),
 				g.Textf("%.1f", values.RPM),
-				Span(Class("metric-unit"), g.Text("rpm")),
+				Span(Class("encoder-unit"), g.Text("rpm")),
 			),
 		),
-		Div(Class("metric"),
-			Div(Class("metric-label"), g.Text("Distance")),
-			Div(Class("metric-value"),
+		Td(
+			Span(Class("encoder-value"),
 				g.Textf("%.2f", values.Distance),
-				Span(Class("metric-unit"), g.Text("mm")),
+				Span(Class("encoder-unit"), g.Text("mm")),
 			),
 		),
 	)
