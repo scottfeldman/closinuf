@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"os"
 	"os/signal"
 	"sync"
@@ -15,25 +16,49 @@ import (
 	"github.com/warthog618/go-gpiocdev"
 )
 
-var (
+type Encoder struct {
 	counter       int   // total accumulated counts (signed for direction)
 	lastState     uint8 // previous A/B state (2 bits)
 	lastReadTime  time.Time
 	lastReadCount int
 	rpm           float64
-	mu            sync.RWMutex // protects counter, rpm, lastReadTime, lastReadCount
+	label         string
+	mu            sync.RWMutex // protects this encoder's state
+}
+
+var (
+	encoders [3]*Encoder // X=0, Y=1, Z=2
+)
+
+const (
+	countsPerRev       = 2400.0                  // 600 PPR × 4 (full quadrature)
+	wheelDiameter      = 50.0                    // wheel diameter in mm
+	wheelCircumference = math.Pi * wheelDiameter // ≈ 157.08mm
 )
 
 type EncoderData struct {
-	Count int     `json:"count"`
-	RPM   float64 `json:"rpm"`
+	X EncoderValues `json:"x"`
+	Y EncoderValues `json:"y"`
+	Z EncoderValues `json:"z"`
+}
+
+type EncoderValues struct {
+	Count    int     `json:"count"`
+	RPM      float64 `json:"rpm"`
+	Distance float64 `json:"distance"` // distance in mm from zero
+	Label    string  `json:"label"`
 }
 
 func main() {
 	const (
 		chipName = "gpiochip0"
-		offsetA  = 17 // GPIO17
-		offsetB  = 18 // GPIO18
+		// GPIO pins for each encoder: [A, B]
+		xOffsetA = 17 // GPIO17
+		xOffsetB = 18 // GPIO18
+		yOffsetA = 19 // GPIO19
+		yOffsetB = 20 // GPIO20
+		zOffsetA = 21 // GPIO21
+		zOffsetB = 22 // GPIO22
 	)
 
 	// Quadrature table: +1 = CW, -1 = CCW, 0 = no/invalid change
@@ -44,76 +69,97 @@ func main() {
 		0, +1, -1, 0,
 	}
 
-	const countsPerRev = 2400.0 // 600 PPR × 4 (full quadrature)
+	// Initialize encoders
+	encoders[0] = &Encoder{label: "X"} // X encoder
+	encoders[1] = &Encoder{label: "Y"} // Y encoder
+	encoders[2] = &Encoder{label: "Z"} // Z encoder
 
-	var lines *gpiocdev.Lines
+	// Initialize GPIO for each encoder
+	encoderConfigs := []struct {
+		label   string
+		offsetA int
+		offsetB int
+		index   int
+	}{
+		{"X", xOffsetA, xOffsetB, 0},
+		{"Y", yOffsetA, yOffsetB, 1},
+		{"Z", zOffsetA, zOffsetB, 2},
+	}
 
-	handler := func(evt gpiocdev.LineEvent) {
-		values := make([]int, 2)
-		if err := lines.Values(values); err != nil {
-			return
-		}
+	for _, cfg := range encoderConfigs {
+		enc := encoders[cfg.index]
+		enc.mu.Lock()
+		enc.lastReadTime = time.Now()
+		enc.lastReadCount = enc.counter
+		enc.mu.Unlock()
 
-		currentState := uint8((values[0] << 1) | values[1])
+		func(enc *Encoder, offsetA, offsetB int, label string) {
+			var lines *gpiocdev.Lines
+			handler := func(evt gpiocdev.LineEvent) {
+				values := make([]int, 2)
+				if err := lines.Values(values); err != nil {
+					return
+				}
 
-		mu.Lock()
-		if currentState != lastState {
-			idx := int(lastState)<<2 | int(currentState)
-			delta := deltaTable[idx]
+				currentState := uint8((values[0] << 1) | values[1])
 
-			if delta != 0 {
-				counter += delta
+				enc.mu.Lock()
+				if currentState != enc.lastState {
+					idx := int(enc.lastState)<<2 | int(currentState)
+					delta := deltaTable[idx]
+
+					if delta != 0 {
+						enc.counter += delta
+					}
+
+					enc.lastState = currentState
+				}
+				enc.mu.Unlock()
 			}
 
-			lastState = currentState
-		}
-		mu.Unlock()
+			var err error
+			lines, err = gpiocdev.RequestLines(chipName,
+				[]int{offsetA, offsetB},
+				gpiocdev.AsInput,
+				gpiocdev.WithPullUp,
+				gpiocdev.WithEventHandler(handler),
+				gpiocdev.WithBothEdges,
+				gpiocdev.WithConsumer("rotary-encoder-"+label),
+			)
+			if err != nil {
+				// If GPIO fails, continue anyway (for development/testing)
+				// In production, you might want to exit or handle differently
+			} else {
+				defer lines.Close()
+			}
+		}(enc, cfg.offsetA, cfg.offsetB, cfg.label)
 	}
 
-	var err error
-	lines, err = gpiocdev.RequestLines(chipName,
-		[]int{offsetA, offsetB},
-		gpiocdev.AsInput,
-		gpiocdev.WithPullUp,
-		gpiocdev.WithEventHandler(handler),
-		gpiocdev.WithBothEdges,
-		gpiocdev.WithConsumer("rotary-encoder"),
-	)
-	if err != nil {
-		// If GPIO fails, continue anyway (for development/testing)
-		// In production, you might want to exit or handle differently
-		// fmt.Fprintf(os.Stderr, "failed to request lines: %v\n", err)
-		// os.Exit(1)
-	} else {
-		defer lines.Close()
-	}
-
-	// Initialize timing
-	mu.Lock()
-	lastReadTime = time.Now()
-	lastReadCount = counter
-	mu.Unlock()
-
-	// Periodic RPM calculation goroutine
+	// Periodic RPM calculation goroutine for all encoders
 	go func() {
 		ticker := time.NewTicker(100 * time.Millisecond) // Update RPM every 100ms
 		defer ticker.Stop()
 
 		for range ticker.C {
-			mu.Lock()
-			now := time.Now()
-			currentCount := counter
+			for _, enc := range encoders {
+				if enc == nil {
+					continue
+				}
+				enc.mu.Lock()
+				now := time.Now()
+				currentCount := enc.counter
 
-			deltaCounts := currentCount - lastReadCount
-			elapsedSec := now.Sub(lastReadTime).Seconds()
+				deltaCounts := currentCount - enc.lastReadCount
+				elapsedSec := now.Sub(enc.lastReadTime).Seconds()
 
-			if elapsedSec > 0 {
-				rpm = (float64(deltaCounts) / countsPerRev) * (60.0 / elapsedSec)
+				if elapsedSec > 0 {
+					enc.rpm = (float64(deltaCounts) / countsPerRev) * (60.0 / elapsedSec)
+				}
+
+				enc.lastReadCount = currentCount
+				enc.lastReadTime = now
+				enc.mu.Unlock()
 			}
-
-			lastReadCount = currentCount
-			lastReadTime = now
-			mu.Unlock()
 		}
 	}()
 
@@ -127,40 +173,39 @@ func main() {
 
 	// Serve static HTML page
 	app.Get("/", func(c *fiber.Ctx) error {
-		mu.RLock()
-		count := counter
-		rpmValue := rpm
-		mu.RUnlock()
-
+		data := getEncoderData()
 		c.Type("html")
-		return Page(count, rpmValue).Render(c)
+		return Page(data).Render(c)
 	})
 
 	// API endpoint to get encoder data (JSON)
 	app.Get("/api/encoder", func(c *fiber.Ctx) error {
-		mu.RLock()
-		data := EncoderData{
-			Count: counter,
-			RPM:   rpm,
-		}
-		mu.RUnlock()
-
+		data := getEncoderData()
 		return c.JSON(data)
 	})
 
 	// HTMX endpoint that returns HTML fragment
 	app.Get("/api/encoder/htmx", func(c *fiber.Ctx) error {
-		mu.RLock()
-		count := counter
-		rpmValue := rpm
-		mu.RUnlock()
-
+		data := getEncoderData()
 		c.Type("html")
-		return EncoderFragment(count, rpmValue).Render(c)
+		return EncoderFragment(data).Render(c)
+	})
+
+	// Zero endpoint to reset all encoder counts
+	app.Post("/api/encoder/zero", func(c *fiber.Ctx) error {
+		for _, enc := range encoders {
+			if enc != nil {
+				enc.mu.Lock()
+				enc.counter = 0
+				enc.mu.Unlock()
+			}
+		}
+		return c.SendStatus(200)
 	})
 
 	// Start server in goroutine
 	go func() {
+		os.Stdout.WriteString("Server is running, listening on :3000\n")
 		if err := app.Listen(":3000"); err != nil {
 			os.Stderr.WriteString("Failed to start server: " + err.Error() + "\n")
 			os.Exit(1)
@@ -175,7 +220,41 @@ func main() {
 	os.Stdout.WriteString("\nShutting down...\n")
 }
 
-func Page(count int, rpmValue float64) g.Node {
+func getEncoderData() EncoderData {
+	var data EncoderData
+	for i, enc := range encoders {
+		if enc == nil {
+			continue
+		}
+		enc.mu.RLock()
+		count := enc.counter
+		rpm := enc.rpm
+		label := enc.label
+		enc.mu.RUnlock()
+
+		// Calculate distance: (count / countsPerRev) × circumference
+		distance := (float64(count) / countsPerRev) * wheelCircumference
+
+		values := EncoderValues{
+			Count:    count,
+			RPM:      rpm,
+			Distance: distance,
+			Label:    label,
+		}
+
+		switch i {
+		case 0:
+			data.X = values
+		case 1:
+			data.Y = values
+		case 2:
+			data.Z = values
+		}
+	}
+	return data
+}
+
+func Page(data EncoderData) g.Node {
 	return HTML(
 		Head(
 			Meta(Charset("utf-8")),
@@ -185,7 +264,7 @@ func Page(count int, rpmValue float64) g.Node {
 			StyleEl(g.Raw(`
 				body {
 					font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-					max-width: 800px;
+					max-width: 1000px;
 					margin: 0 auto;
 					padding: 2rem;
 					background: #f5f5f5;
@@ -200,12 +279,27 @@ func Page(count int, rpmValue float64) g.Node {
 					margin-top: 0;
 					color: #333;
 				}
-				.metric {
-					margin: 1.5rem 0;
+				.encoders-grid {
+					display: grid;
+					grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+					gap: 1.5rem;
+					margin-bottom: 2rem;
+				}
+				.encoder-card {
 					padding: 1.5rem;
 					background: #f8f9fa;
 					border-radius: 8px;
 					border-left: 4px solid #007bff;
+				}
+				.encoder-label {
+					font-size: 1.2rem;
+					font-weight: bold;
+					color: #007bff;
+					margin-bottom: 1rem;
+					text-transform: uppercase;
+				}
+				.metric {
+					margin: 1rem 0;
 				}
 				.metric-label {
 					font-size: 0.9rem;
@@ -215,46 +309,94 @@ func Page(count int, rpmValue float64) g.Node {
 					margin-bottom: 0.5rem;
 				}
 				.metric-value {
-					font-size: 2.5rem;
+					font-size: 2rem;
 					font-weight: bold;
 					color: #007bff;
 					font-variant-numeric: tabular-nums;
 				}
 				.metric-unit {
-					font-size: 1.2rem;
+					font-size: 1rem;
 					color: #999;
 					margin-left: 0.5rem;
+				}
+				.zero-button {
+					background: #dc3545;
+					color: white;
+					border: none;
+					padding: 0.75rem 1.5rem;
+					border-radius: 6px;
+					font-size: 1rem;
+					font-weight: 600;
+					cursor: pointer;
+					transition: background 0.2s;
+				}
+				.zero-button:hover {
+					background: #c82333;
+				}
+				.zero-button:active {
+					background: #bd2130;
+				}
+				.button-container {
+					text-align: center;
+					margin-top: 2rem;
 				}
 			`)),
 		),
 		Body(
 			Div(Class("container"),
 				H1(g.Text("Rotary Encoder Monitor")),
-				EncoderFragment(count, rpmValue),
+				EncoderFragment(data),
 			),
 		),
 	)
 }
 
-func EncoderFragment(count int, rpmValue float64) g.Node {
+func EncoderFragment(data EncoderData) g.Node {
 	return Div(
 		hx.Get("/api/encoder/htmx"),
 		hx.Trigger("every 200ms"),
 		hx.Swap("outerHTML"),
 		hx.Target("this"),
 		ID("encoder-data"),
+		Div(Class("encoders-grid"),
+			encoderCard("X", data.X),
+			encoderCard("Y", data.Y),
+			encoderCard("Z", data.Z),
+		),
+		Div(Class("button-container"),
+			Button(
+				Class("zero-button"),
+				hx.Post("/api/encoder/zero"),
+				hx.Trigger("click"),
+				hx.Swap("none"),
+				g.Text("Zero All Counts"),
+			),
+		),
+	)
+}
+
+func encoderCard(label string, values EncoderValues) g.Node {
+	return Div(Class("encoder-card"),
+		Div(Class("encoder-label"), g.Text(label+" Encoder")),
 		Div(Class("metric"),
 			Div(Class("metric-label"), g.Text("Count")),
 			Div(Class("metric-value"),
-				g.Textf("%d", count),
+				g.Textf("%d", values.Count),
 				Span(Class("metric-unit"), g.Text("counts")),
 			),
 		),
 		Div(Class("metric"),
 			Div(Class("metric-label"), g.Text("RPM")),
 			Div(Class("metric-value"),
-				g.Textf("%.1f", rpmValue),
+				g.Textf("%.1f", values.RPM),
 				Span(Class("metric-unit"), g.Text("rpm")),
+			),
+		),
+		Div(Class("metric"),
+			Div(Class("metric-label"), g.Text("Distance")),
+			Div(Class("metric-value"),
+				g.Textf("%.2f", values.Distance),
+				Span(Class("metric-unit"), g.Text("mm")),
 			),
 		),
 	)
