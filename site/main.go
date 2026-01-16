@@ -127,8 +127,13 @@ func main() {
 
 	// Serve static HTML page
 	app.Get("/", func(c *fiber.Ctx) error {
+		mu.RLock()
+		count := counter
+		rpmValue := rpm
+		mu.RUnlock()
+
 		c.Type("html")
-		return Page().Render(c)
+		return Page(count, rpmValue).Render(c)
 	})
 
 	// API endpoint to get encoder data (JSON)
@@ -170,7 +175,7 @@ func main() {
 	os.Stdout.WriteString("\nShutting down...\n")
 }
 
-func Page() g.Node {
+func Page(count int, rpmValue float64) g.Node {
 	return HTML(
 		Head(
 			Meta(Charset("utf-8")),
@@ -225,27 +230,7 @@ func Page() g.Node {
 		Body(
 			Div(Class("container"),
 				H1(g.Text("Rotary Encoder Monitor")),
-				Div(
-					hx.Get("/api/encoder/htmx"),
-					hx.Trigger("every 200ms"),
-					hx.Swap("outerHTML"),
-					hx.Target("this"),
-					ID("encoder-data"),
-					Div(Class("metric"),
-						Div(Class("metric-label"), g.Text("Count")),
-						Div(Class("metric-value"),
-							g.Text("0"),
-							Span(Class("metric-unit"), g.Text("counts")),
-						),
-					),
-					Div(Class("metric"),
-						Div(Class("metric-label"), g.Text("RPM")),
-						Div(Class("metric-value"),
-							g.Text("0.0"),
-							Span(Class("metric-unit"), g.Text("rpm")),
-						),
-					),
-				),
+				EncoderFragment(count, rpmValue),
 			),
 		),
 	)
