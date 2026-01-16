@@ -576,16 +576,16 @@ func plotSection() g.Node {
 		H2(g.Text("3D Position Plot")),
 		Div(Class("plot-controls"),
 			Label(
-				Attr("for", "timeWindow"),
+				g.Attr("for", "timeWindow"),
 				g.Text("Time Window: "),
 			),
 			Input(
 				Type("range"),
 				ID("timeWindow"),
-				Attr("min", "10"),
-				Attr("max", "300"),
-				Attr("value", "60"),
-				Attr("step", "10"),
+				g.Attr("min", "10"),
+				g.Attr("max", "300"),
+				g.Attr("value", "60"),
+				g.Attr("step", "10"),
 			),
 			Span(ID("timeWindowValue"), g.Text("60s")),
 			Button(
