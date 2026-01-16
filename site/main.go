@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"math"
 	"os"
 	"os/signal"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/websocket/v2"
 	g "github.com/maragudk/gomponents"
 	hx "github.com/maragudk/gomponents-htmx"
 	. "github.com/maragudk/gomponents/html"
@@ -28,8 +30,20 @@ type Encoder struct {
 }
 
 var (
-	encoders [3]*Encoder // X=0, Y=1, Z=2
+	encoders       [3]*Encoder // X=0, Y=1, Z=2
+	historyPoints  []DataPoint // historical 3D points
+	historyMu      sync.RWMutex
+	maxHistorySize = 10000 // maximum number of points to keep
+	wsClients      = make(map[*websocket.Conn]bool)
+	wsClientsMu    sync.RWMutex
 )
+
+type DataPoint struct {
+	X         float64   `json:"x"`
+	Y         float64   `json:"y"`
+	Z         float64   `json:"z"`
+	Timestamp time.Time `json:"timestamp"`
+}
 
 const (
 	countsPerRev       = 2400.0                  // 600 PPR × 4 (full quadrature)
@@ -49,19 +63,6 @@ type EncoderValues struct {
 	Distance float64 `json:"distance"` // distance in mm from zero
 	Label    string  `json:"label"`
 }
-
-type DataPoint struct {
-	X         float64   `json:"x"`
-	Y         float64   `json:"y"`
-	Z         float64   `json:"z"`
-	Timestamp time.Time `json:"timestamp"`
-}
-
-var (
-	history    []DataPoint
-	historyMu  sync.RWMutex
-	maxHistory = 500 // maximum number of data points to keep
-)
 
 func main() {
 	const (
@@ -146,19 +147,20 @@ func main() {
 		}(enc, cfg.offsetA, cfg.offsetB, cfg.label)
 	}
 
-	// Periodic RPM calculation goroutine for all encoders
+	// Periodic RPM calculation and data point collection goroutine
 	go func() {
 		ticker := time.NewTicker(100 * time.Millisecond) // Update RPM every 100ms
 		defer ticker.Stop()
 
 		for range ticker.C {
+			now := time.Now()
 			var distances [3]float64
+
 			for i, enc := range encoders {
 				if enc == nil {
 					continue
 				}
 				enc.mu.Lock()
-				now := time.Now()
 				currentCount := enc.counter
 
 				deltaCounts := currentCount - enc.lastReadCount
@@ -168,27 +170,31 @@ func main() {
 					enc.rpm = (float64(deltaCounts) / countsPerRev) * (60.0 / elapsedSec)
 				}
 
-				// Calculate distance for this encoder
-				distances[i] = (float64(currentCount) / countsPerRev) * wheelCircumference
-
 				enc.lastReadCount = currentCount
 				enc.lastReadTime = now
 				enc.mu.Unlock()
+
+				// Calculate distance for this encoder
+				distances[i] = (float64(currentCount) / countsPerRev) * wheelCircumference
 			}
 
-			// Add data point to history
+			// Store data point
 			historyMu.Lock()
-			history = append(history, DataPoint{
+			point := DataPoint{
 				X:         distances[0],
 				Y:         distances[1],
 				Z:         distances[2],
-				Timestamp: time.Now(),
-			})
-			// Keep only the last maxHistory points
-			if len(history) > maxHistory {
-				history = history[len(history)-maxHistory:]
+				Timestamp: now,
+			}
+			historyPoints = append(historyPoints, point)
+			// Keep only last maxHistorySize points
+			if len(historyPoints) > maxHistorySize {
+				historyPoints = historyPoints[len(historyPoints)-maxHistorySize:]
 			}
 			historyMu.Unlock()
+
+			// Broadcast to WebSocket clients
+			broadcastDataPoint(point)
 		}
 	}()
 
@@ -199,6 +205,69 @@ func main() {
 
 	// CORS middleware
 	app.Use(cors.New())
+
+	// WebSocket upgrade middleware
+	app.Use("/ws", func(c *fiber.Ctx) error {
+		if websocket.IsWebSocketUpgrade(c) {
+			c.Locals("allowed", true)
+			return c.Next()
+		}
+		return fiber.ErrUpgradeRequired
+	})
+
+	// WebSocket endpoint for real-time 3D data
+	app.Get("/ws/encoder", websocket.New(func(c *websocket.Conn) {
+		// Register client
+		wsClientsMu.Lock()
+		wsClients[c] = true
+		wsClientsMu.Unlock()
+
+		// Send initial history
+		historyMu.RLock()
+		history := make([]DataPoint, len(historyPoints))
+		copy(history, historyPoints)
+		historyMu.RUnlock()
+
+		if len(history) > 0 {
+			data, _ := json.Marshal(map[string]interface{}{
+				"type":   "history",
+				"points": history,
+			})
+			c.WriteMessage(websocket.TextMessage, data)
+		}
+
+		// Keep connection alive and handle disconnects
+		var (
+			mt  int
+			msg []byte
+			err error
+		)
+		for {
+			if mt, msg, err = c.ReadMessage(); err != nil {
+				break
+			}
+			// Handle client messages (e.g., time window requests)
+			_ = mt
+			_ = msg
+		}
+
+		// Unregister client
+		wsClientsMu.Lock()
+		delete(wsClients, c)
+		wsClientsMu.Unlock()
+	}))
+
+	// API endpoint to get historical data
+	app.Get("/api/encoder/history", func(c *fiber.Ctx) error {
+		historyMu.RLock()
+		history := make([]DataPoint, len(historyPoints))
+		copy(history, historyPoints)
+		historyMu.RUnlock()
+
+		return c.JSON(map[string]interface{}{
+			"points": history,
+		})
+	})
 
 	// Serve static HTML page
 	app.Get("/", func(c *fiber.Ctx) error {
@@ -229,20 +298,7 @@ func main() {
 				enc.mu.Unlock()
 			}
 		}
-		// Clear history when zeroing
-		historyMu.Lock()
-		history = nil
-		historyMu.Unlock()
 		return c.SendStatus(200)
-	})
-
-	// API endpoint to get historical data for 3D plot
-	app.Get("/api/encoder/history", func(c *fiber.Ctx) error {
-		historyMu.RLock()
-		points := make([]DataPoint, len(history))
-		copy(points, history)
-		historyMu.RUnlock()
-		return c.JSON(points)
 	})
 
 	// Start server in goroutine
@@ -409,172 +465,47 @@ func Page(data EncoderData) g.Node {
 				}
 				.plot-container {
 					margin-top: 2rem;
+					padding: 1.5rem;
 					background: white;
 					border-radius: 8px;
-					padding: 1.5rem;
 					box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+				}
+				.plot-controls {
+					display: flex;
+					gap: 1rem;
+					margin-bottom: 1rem;
+					align-items: center;
+					flex-wrap: wrap;
+				}
+				.plot-controls label {
+					font-size: 0.9rem;
+					color: #666;
+				}
+				.plot-controls input[type="range"] {
+					flex: 1;
+					min-width: 150px;
+				}
+				.plot-controls button {
+					padding: 0.5rem 1rem;
+					border: 1px solid #ddd;
+					border-radius: 4px;
+					background: white;
+					cursor: pointer;
+					font-size: 0.9rem;
+				}
+				.plot-controls button:hover {
+					background: #f8f9fa;
 				}
 				#plot3d {
 					width: 100%;
 					height: 600px;
 				}
 			`)),
-			Script(g.Raw(`
-				let plotInitialized = false;
-				
-				function updatePlot() {
-					const plotDiv = document.getElementById('plot3d');
-					if (!plotDiv) {
-						console.error('plot3d div not found');
-						return;
-					}
-					
-					if (typeof Plotly === 'undefined') {
-						console.log('Waiting for Plotly to load...');
-						setTimeout(updatePlot, 100);
-						return;
-					}
-					
-					fetch('/api/encoder/history')
-						.then(response => response.json())
-						.then(data => {
-							if (data.length === 0) {
-								// Initialize empty plot if no data yet
-								if (!plotInitialized) {
-									const emptyTrace = {
-										x: [0],
-										y: [0],
-										z: [0],
-										mode: 'markers',
-										type: 'scatter3d',
-										marker: { size: 1, color: 'rgba(0,0,0,0)' },
-										name: 'Path'
-									};
-									const layout = {
-										title: '3D Encoder Path',
-										scene: {
-											xaxis: { title: 'X (mm)' },
-											yaxis: { title: 'Y (mm)' },
-											zaxis: { title: 'Z (mm)' },
-											camera: { eye: { x: 1.5, y: 1.5, z: 1.5 } },
-											dragmode: 'orbit',
-											hovermode: 'closest'
-										},
-										margin: { l: 0, r: 0, t: 40, b: 0 },
-										height: 600
-									};
-									const config = {
-										displayModeBar: true,
-										displaylogo: false,
-										modeBarButtonsToRemove: ['lasso2d', 'select2d'],
-										responsive: true
-									};
-									Plotly.newPlot('plot3d', [emptyTrace], layout, config);
-									plotInitialized = true;
-									console.log('Plot initialized (empty)');
-								}
-								return;
-							}
-							
-							const x = data.map(p => p.x);
-							const y = data.map(p => p.y);
-							const z = data.map(p => p.z);
-							
-							const trace = {
-								x: x,
-								y: y,
-								z: z,
-								mode: 'lines+markers',
-								type: 'scatter3d',
-								marker: {
-									size: 4,
-									color: z,
-									colorscale: 'Viridis',
-									showscale: true,
-									colorbar: {
-										title: 'Z (mm)'
-									}
-								},
-								line: {
-									color: 'rgba(0, 123, 255, 0.6)',
-									width: 2
-								},
-								name: 'Path'
-							};
-							
-							const layout = {
-								title: '3D Encoder Path',
-								scene: {
-									xaxis: { title: 'X (mm)' },
-									yaxis: { title: 'Y (mm)' },
-									zaxis: { title: 'Z (mm)' },
-									camera: {
-										eye: { x: 1.5, y: 1.5, z: 1.5 }
-									},
-									dragmode: 'orbit',
-									hovermode: 'closest'
-								},
-								margin: { l: 0, r: 0, t: 40, b: 0 },
-								height: 600
-							};
-							
-							const config = {
-								displayModeBar: true,
-								displaylogo: false,
-								modeBarButtonsToRemove: ['lasso2d', 'select2d'],
-								responsive: true
-							};
-							
-							if (!plotInitialized) {
-								const config = {
-									displayModeBar: true,
-									displaylogo: false,
-									modeBarButtonsToRemove: ['lasso2d', 'select2d'],
-									responsive: true
-								};
-								Plotly.newPlot('plot3d', [trace], layout, config);
-								plotInitialized = true;
-								console.log('Plot initialized with data');
-							} else {
-								// Use restyle to update only data, preserving camera/layout
-								Plotly.restyle('plot3d', {
-									x: [x],
-									y: [y],
-									z: [z]
-								}, [0]);
-							}
-						})
-						.catch(err => console.error('Error updating plot:', err));
-				}
-				
-				// Wait for DOM and Plotly to load, then start updating
-				function initPlot() {
-					if (document.readyState === 'loading') {
-						document.addEventListener('DOMContentLoaded', initPlot);
-						return;
-					}
-					
-					if (typeof Plotly !== 'undefined') {
-						console.log('Initializing plot...');
-						updatePlot();
-						setInterval(updatePlot, 200);
-					} else {
-						setTimeout(initPlot, 100);
-					}
-				}
-				initPlot();
-			`)),
 		),
 		Body(
 			Div(Class("container"),
 				EncoderFragment(data),
-			),
-			Div(Class("container"),
-				Div(Class("plot-container"),
-					H2(g.Text("3D Encoder Path Visualization")),
-					P(Class("plot-hint"), g.Text("Click and drag to rotate • Scroll to zoom • Double-click to reset view")),
-					Div(ID("plot3d")),
-				),
+				plotSection(),
 			),
 		),
 	)
@@ -638,4 +569,229 @@ func encoderRow(label string, values EncoderValues) g.Node {
 			),
 		),
 	)
+}
+
+func plotSection() g.Node {
+	return Div(Class("plot-container"),
+		H2(g.Text("3D Position Plot")),
+		Div(Class("plot-controls"),
+			Label(
+				Attr("for", "timeWindow"),
+				g.Text("Time Window: "),
+			),
+			Input(
+				Type("range"),
+				ID("timeWindow"),
+				Attr("min", "10"),
+				Attr("max", "300"),
+				Attr("value", "60"),
+				Attr("step", "10"),
+			),
+			Span(ID("timeWindowValue"), g.Text("60s")),
+			Button(
+				ID("resetView"),
+				g.Text("Reset View"),
+			),
+			Button(
+				ID("clearPlot"),
+				g.Text("Clear Plot"),
+			),
+		),
+		Div(ID("plot3d")),
+		Script(g.Raw(`
+			let plotData = {
+				x: [],
+				y: [],
+				z: [],
+				mode: 'lines+markers',
+				type: 'scatter3d',
+				marker: {
+					size: 4,
+					color: [],
+					colorscale: 'Viridis',
+					showscale: true,
+					colorbar: {
+						title: 'Time'
+					}
+				},
+				line: {
+					color: 'rgba(0, 123, 255, 0.6)',
+					width: 2
+				}
+			};
+
+			let layout = {
+				title: 'Encoder Position (X, Y, Z)',
+				scene: {
+					xaxis: { title: 'X (mm)' },
+					yaxis: { title: 'Y (mm)' },
+					zaxis: { title: 'Z (mm)' },
+					camera: {
+						eye: { x: 1.5, y: 1.5, z: 1.5 }
+					}
+				},
+				margin: { l: 0, r: 0, t: 30, b: 0 },
+				height: 600
+			};
+
+			let config = {
+				responsive: true,
+				displayModeBar: true,
+				modeBarButtonsToRemove: ['pan2d', 'lasso2d'],
+				displaylogo: false
+			};
+
+			let timeWindow = 60; // seconds
+			let startTime = Date.now();
+
+			function updatePlot() {
+				Plotly.redraw('plot3d');
+			}
+
+			function addPoint(x, y, z, timestamp) {
+				const now = Date.now();
+				const pointTime = timestamp.getTime ? timestamp.getTime() : new Date(timestamp).getTime();
+				const age = (now - pointTime) / 1000; // age in seconds
+
+				// Filter by time window
+				if (age > timeWindow) {
+					return;
+				}
+
+				plotData.x.push(x);
+				plotData.y.push(y);
+				plotData.z.push(z);
+				
+				// Color by time (newer = brighter)
+				const normalizedAge = Math.max(0, 1 - (age / timeWindow));
+				plotData.marker.color.push(normalizedAge);
+
+				// Remove old points
+				while (plotData.x.length > 0) {
+					const firstPointTime = startTime - (timeWindow * 1000);
+					if (plotData.marker.color[0] <= 0) {
+						plotData.x.shift();
+						plotData.y.shift();
+						plotData.z.shift();
+						plotData.marker.color.shift();
+					} else {
+						break;
+					}
+				}
+
+				updatePlot();
+			}
+
+			function loadHistory(points) {
+				plotData.x = [];
+				plotData.y = [];
+				plotData.z = [];
+				plotData.marker.color = [];
+				startTime = Date.now();
+
+				points.forEach(point => {
+					const timestamp = new Date(point.timestamp);
+					addPoint(point.x, point.y, point.z, timestamp);
+				});
+
+				Plotly.newPlot('plot3d', [plotData], layout, config);
+			}
+
+			// WebSocket connection
+			let ws;
+			function connectWebSocket() {
+				const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+				ws = new WebSocket(protocol + '//' + window.location.host + '/ws/encoder');
+
+				ws.onmessage = function(event) {
+					const data = JSON.parse(event.data);
+					if (data.type === 'history') {
+						loadHistory(data.points);
+					} else if (data.type === 'point') {
+						const timestamp = new Date(data.point.timestamp);
+						addPoint(data.point.x, data.point.y, data.point.z, timestamp);
+					}
+				};
+
+				ws.onerror = function(error) {
+					console.error('WebSocket error:', error);
+				};
+
+				ws.onclose = function() {
+					console.log('WebSocket closed, reconnecting...');
+					setTimeout(connectWebSocket, 1000);
+				};
+			}
+
+			// Initialize plot
+			Plotly.newPlot('plot3d', [plotData], layout, config);
+
+			// Connect WebSocket
+			connectWebSocket();
+
+			// Time window control
+			document.getElementById('timeWindow').addEventListener('input', function(e) {
+				timeWindow = parseInt(e.target.value);
+				document.getElementById('timeWindowValue').textContent = timeWindow + 's';
+				// Filter existing points
+				const now = Date.now();
+				const filtered = {
+					x: [],
+					y: [],
+					z: [],
+					color: []
+				};
+				for (let i = 0; i < plotData.x.length; i++) {
+					if (plotData.marker.color[i] > 0) {
+						filtered.x.push(plotData.x[i]);
+						filtered.y.push(plotData.y[i]);
+						filtered.z.push(plotData.z[i]);
+						filtered.color.push(plotData.marker.color[i]);
+					}
+				}
+				plotData.x = filtered.x;
+				plotData.y = filtered.y;
+				plotData.z = filtered.z;
+				plotData.marker.color = filtered.color;
+				updatePlot();
+			});
+
+			// Reset view button
+			document.getElementById('resetView').addEventListener('click', function() {
+				layout.scene.camera.eye = { x: 1.5, y: 1.5, z: 1.5 };
+				Plotly.relayout('plot3d', layout);
+			});
+
+			// Clear plot button
+			document.getElementById('clearPlot').addEventListener('click', function() {
+				plotData.x = [];
+				plotData.y = [];
+				plotData.z = [];
+				plotData.marker.color = [];
+				startTime = Date.now();
+				updatePlot();
+			});
+		`)),
+	)
+}
+
+func broadcastDataPoint(point DataPoint) {
+	data, err := json.Marshal(map[string]interface{}{
+		"type":  "point",
+		"point": point,
+	})
+	if err != nil {
+		return
+	}
+
+	wsClientsMu.RLock()
+	defer wsClientsMu.RUnlock()
+
+	for conn := range wsClients {
+		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+			// Remove dead connections
+			delete(wsClients, conn)
+			conn.Close()
+		}
+	}
 }
