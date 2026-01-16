@@ -536,7 +536,12 @@ func Page(data EncoderData) g.Node {
 								plotInitialized = true;
 								console.log('Plot initialized with data');
 							} else {
-								Plotly.update('plot3d', { x: [x], y: [y], z: [z] }, {}, [0]);
+								// Use restyle to update only data, preserving camera/layout
+								Plotly.restyle('plot3d', {
+									x: [x],
+									y: [y],
+									z: [z]
+								}, [0]);
 							}
 						})
 						.catch(err => console.error('Error updating plot:', err));
