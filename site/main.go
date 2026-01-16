@@ -50,6 +50,19 @@ type EncoderValues struct {
 	Label    string  `json:"label"`
 }
 
+type DataPoint struct {
+	X         float64   `json:"x"`
+	Y         float64   `json:"y"`
+	Z         float64   `json:"z"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+var (
+	history    []DataPoint
+	historyMu  sync.RWMutex
+	maxHistory = 500 // maximum number of data points to keep
+)
+
 func main() {
 	const (
 		chipName = "gpiochip0"
@@ -139,7 +152,8 @@ func main() {
 		defer ticker.Stop()
 
 		for range ticker.C {
-			for _, enc := range encoders {
+			var distances [3]float64
+			for i, enc := range encoders {
 				if enc == nil {
 					continue
 				}
@@ -154,10 +168,27 @@ func main() {
 					enc.rpm = (float64(deltaCounts) / countsPerRev) * (60.0 / elapsedSec)
 				}
 
+				// Calculate distance for this encoder
+				distances[i] = (float64(currentCount) / countsPerRev) * wheelCircumference
+
 				enc.lastReadCount = currentCount
 				enc.lastReadTime = now
 				enc.mu.Unlock()
 			}
+
+			// Add data point to history
+			historyMu.Lock()
+			history = append(history, DataPoint{
+				X:         distances[0],
+				Y:         distances[1],
+				Z:         distances[2],
+				Timestamp: time.Now(),
+			})
+			// Keep only the last maxHistory points
+			if len(history) > maxHistory {
+				history = history[len(history)-maxHistory:]
+			}
+			historyMu.Unlock()
 		}
 	}()
 
@@ -198,7 +229,20 @@ func main() {
 				enc.mu.Unlock()
 			}
 		}
+		// Clear history when zeroing
+		historyMu.Lock()
+		history = nil
+		historyMu.Unlock()
 		return c.SendStatus(200)
+	})
+
+	// API endpoint to get historical data for 3D plot
+	app.Get("/api/encoder/history", func(c *fiber.Ctx) error {
+		historyMu.RLock()
+		points := make([]DataPoint, len(history))
+		copy(points, history)
+		historyMu.RUnlock()
+		return c.JSON(points)
 	})
 
 	// Start server in goroutine
@@ -362,11 +406,90 @@ func Page(data EncoderData) g.Node {
 					text-align: center;
 					margin-top: 2rem;
 				}
+				.plot-container {
+					margin-top: 2rem;
+					background: white;
+					border-radius: 8px;
+					padding: 1.5rem;
+					box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+				}
+				#plot3d {
+					width: 100%;
+					height: 600px;
+				}
+			`)),
+			Script(g.Raw(`
+				let plotInitialized = false;
+				
+				function updatePlot() {
+					fetch('/api/encoder/history')
+						.then(response => response.json())
+						.then(data => {
+							if (data.length === 0) return;
+							
+							const x = data.map(p => p.x);
+							const y = data.map(p => p.y);
+							const z = data.map(p => p.z);
+							
+							const trace = {
+								x: x,
+								y: y,
+								z: z,
+								mode: 'lines+markers',
+								type: 'scatter3d',
+								marker: {
+									size: 4,
+									color: z,
+									colorscale: 'Viridis',
+									showscale: true,
+									colorbar: {
+										title: 'Z (mm)'
+									}
+								},
+								line: {
+									color: 'rgba(0, 123, 255, 0.6)',
+									width: 2
+								},
+								name: 'Path'
+							};
+							
+							const layout = {
+								title: '3D Encoder Path',
+								scene: {
+									xaxis: { title: 'X (mm)' },
+									yaxis: { title: 'Y (mm)' },
+									zaxis: { title: 'Z (mm)' },
+									camera: {
+										eye: { x: 1.5, y: 1.5, z: 1.5 }
+									}
+								},
+								margin: { l: 0, r: 0, t: 40, b: 0 },
+								height: 600
+							};
+							
+							if (!plotInitialized) {
+								Plotly.newPlot('plot3d', [trace], layout);
+								plotInitialized = true;
+							} else {
+								Plotly.redraw('plot3d');
+								Plotly.update('plot3d', { x: [x], y: [y], z: [z] }, layout);
+							}
+						})
+						.catch(err => console.error('Error updating plot:', err));
+				}
+				
+				// Update plot every 200ms
+				setInterval(updatePlot, 200);
+				// Initial plot load
+				updatePlot();
 			`)),
 		),
 		Body(
 			Div(Class("container"),
 				EncoderFragment(data),
+				Div(Class("plot-container"),
+					Div(ID("plot3d")),
+				),
 			),
 		),
 	)
