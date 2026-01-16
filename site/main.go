@@ -366,7 +366,6 @@ func Page(data EncoderData) g.Node {
 		),
 		Body(
 			Div(Class("container"),
-				H1(g.Text("Rotary Encoder Monitor")),
 				EncoderFragment(data),
 			),
 		),
