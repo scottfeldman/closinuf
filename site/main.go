@@ -456,12 +456,20 @@ func Page(data EncoderData) g.Node {
 											xaxis: { title: 'X (mm)' },
 											yaxis: { title: 'Y (mm)' },
 											zaxis: { title: 'Z (mm)' },
-											camera: { eye: { x: 1.5, y: 1.5, z: 1.5 } }
+											camera: { eye: { x: 1.5, y: 1.5, z: 1.5 } },
+											dragmode: 'orbit',
+											hovermode: 'closest'
 										},
 										margin: { l: 0, r: 0, t: 40, b: 0 },
 										height: 600
 									};
-									Plotly.newPlot('plot3d', [emptyTrace], layout);
+									const config = {
+										displayModeBar: true,
+										displaylogo: false,
+										modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+										responsive: true
+									};
+									Plotly.newPlot('plot3d', [emptyTrace], layout, config);
 									plotInitialized = true;
 									console.log('Plot initialized (empty)');
 								}
@@ -502,14 +510,29 @@ func Page(data EncoderData) g.Node {
 									zaxis: { title: 'Z (mm)' },
 									camera: {
 										eye: { x: 1.5, y: 1.5, z: 1.5 }
-									}
+									},
+									dragmode: 'orbit',
+									hovermode: 'closest'
 								},
 								margin: { l: 0, r: 0, t: 40, b: 0 },
 								height: 600
 							};
 							
+							const config = {
+								displayModeBar: true,
+								displaylogo: false,
+								modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+								responsive: true
+							};
+							
 							if (!plotInitialized) {
-								Plotly.newPlot('plot3d', [trace], layout);
+								const config = {
+									displayModeBar: true,
+									displaylogo: false,
+									modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+									responsive: true
+								};
+								Plotly.newPlot('plot3d', [trace], layout, config);
 								plotInitialized = true;
 								console.log('Plot initialized with data');
 							} else {
@@ -543,6 +566,8 @@ func Page(data EncoderData) g.Node {
 			),
 			Div(Class("container"),
 				Div(Class("plot-container"),
+					H2(g.Text("3D Encoder Path Visualization")),
+					P(Class("plot-hint"), g.Text("Click and drag to rotate • Scroll to zoom • Double-click to reset view")),
 					Div(ID("plot3d")),
 				),
 			),
