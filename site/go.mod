@@ -4,7 +4,6 @@ go 1.25.3
 
 require (
 	github.com/gofiber/fiber/v2 v2.52.5
-	github.com/gofiber/websocket/v2 v2.2.1
 	github.com/maragudk/gomponents v0.20.1
 	github.com/maragudk/gomponents-htmx v0.5.0
 	github.com/warthog618/go-gpiocdev v0.9.1

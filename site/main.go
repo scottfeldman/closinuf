@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"math"
 	"os"
 	"os/signal"
@@ -11,7 +10,6 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
-	"github.com/gofiber/websocket/v2"
 	g "github.com/maragudk/gomponents"
 	hx "github.com/maragudk/gomponents-htmx"
 	. "github.com/maragudk/gomponents/html"
@@ -30,20 +28,8 @@ type Encoder struct {
 }
 
 var (
-	encoders       [3]*Encoder // X=0, Y=1, Z=2
-	historyPoints  []DataPoint // historical 3D points
-	historyMu      sync.RWMutex
-	maxHistorySize = 10000 // maximum number of points to keep
-	wsClients      = make(map[*websocket.Conn]bool)
-	wsClientsMu    sync.RWMutex
+	encoders [3]*Encoder // X=0, Y=1, Z=2
 )
-
-type DataPoint struct {
-	X         float64   `json:"x"`
-	Y         float64   `json:"y"`
-	Z         float64   `json:"z"`
-	Timestamp time.Time `json:"timestamp"`
-}
 
 const (
 	countsPerRev       = 2400.0                  // 600 PPR × 4 (full quadrature)
@@ -147,20 +133,18 @@ func main() {
 		}(enc, cfg.offsetA, cfg.offsetB, cfg.label)
 	}
 
-	// Periodic RPM calculation and data point collection goroutine
+	// Periodic RPM calculation goroutine for all encoders
 	go func() {
 		ticker := time.NewTicker(100 * time.Millisecond) // Update RPM every 100ms
 		defer ticker.Stop()
 
 		for range ticker.C {
-			now := time.Now()
-			var distances [3]float64
-
-			for i, enc := range encoders {
+			for _, enc := range encoders {
 				if enc == nil {
 					continue
 				}
 				enc.mu.Lock()
+				now := time.Now()
 				currentCount := enc.counter
 
 				deltaCounts := currentCount - enc.lastReadCount
@@ -173,28 +157,7 @@ func main() {
 				enc.lastReadCount = currentCount
 				enc.lastReadTime = now
 				enc.mu.Unlock()
-
-				// Calculate distance for this encoder
-				distances[i] = (float64(currentCount) / countsPerRev) * wheelCircumference
 			}
-
-			// Store data point
-			historyMu.Lock()
-			point := DataPoint{
-				X:         distances[0],
-				Y:         distances[1],
-				Z:         distances[2],
-				Timestamp: now,
-			}
-			historyPoints = append(historyPoints, point)
-			// Keep only last maxHistorySize points
-			if len(historyPoints) > maxHistorySize {
-				historyPoints = historyPoints[len(historyPoints)-maxHistorySize:]
-			}
-			historyMu.Unlock()
-
-			// Broadcast to WebSocket clients
-			broadcastDataPoint(point)
 		}
 	}()
 
@@ -205,69 +168,6 @@ func main() {
 
 	// CORS middleware
 	app.Use(cors.New())
-
-	// WebSocket upgrade middleware
-	app.Use("/ws", func(c *fiber.Ctx) error {
-		if websocket.IsWebSocketUpgrade(c) {
-			c.Locals("allowed", true)
-			return c.Next()
-		}
-		return fiber.ErrUpgradeRequired
-	})
-
-	// WebSocket endpoint for real-time 3D data
-	app.Get("/ws/encoder", websocket.New(func(c *websocket.Conn) {
-		// Register client
-		wsClientsMu.Lock()
-		wsClients[c] = true
-		wsClientsMu.Unlock()
-
-		// Send initial history
-		historyMu.RLock()
-		history := make([]DataPoint, len(historyPoints))
-		copy(history, historyPoints)
-		historyMu.RUnlock()
-
-		if len(history) > 0 {
-			data, _ := json.Marshal(map[string]interface{}{
-				"type":   "history",
-				"points": history,
-			})
-			c.WriteMessage(websocket.TextMessage, data)
-		}
-
-		// Keep connection alive and handle disconnects
-		var (
-			mt  int
-			msg []byte
-			err error
-		)
-		for {
-			if mt, msg, err = c.ReadMessage(); err != nil {
-				break
-			}
-			// Handle client messages (e.g., time window requests)
-			_ = mt
-			_ = msg
-		}
-
-		// Unregister client
-		wsClientsMu.Lock()
-		delete(wsClients, c)
-		wsClientsMu.Unlock()
-	}))
-
-	// API endpoint to get historical data
-	app.Get("/api/encoder/history", func(c *fiber.Ctx) error {
-		historyMu.RLock()
-		history := make([]DataPoint, len(historyPoints))
-		copy(history, historyPoints)
-		historyMu.RUnlock()
-
-		return c.JSON(map[string]interface{}{
-			"points": history,
-		})
-	})
 
 	// Serve static HTML page
 	app.Get("/", func(c *fiber.Ctx) error {
@@ -359,7 +259,6 @@ func Page(data EncoderData) g.Node {
 			Meta(Name("viewport"), Content("width=device-width, initial-scale=1")),
 			TitleEl(g.Text("Rotary Encoder Monitor")),
 			Script(Src("https://unpkg.com/htmx.org@2.0.3/dist/htmx.min.js")),
-			Script(Src("https://cdn.plot.ly/plotly-2.27.0.min.js")),
 			StyleEl(g.Raw(`
 				body {
 					font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
@@ -463,49 +362,11 @@ func Page(data EncoderData) g.Node {
 					text-align: center;
 					margin-top: 2rem;
 				}
-				.plot-container {
-					margin-top: 2rem;
-					padding: 1.5rem;
-					background: white;
-					border-radius: 8px;
-					box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-				}
-				.plot-controls {
-					display: flex;
-					gap: 1rem;
-					margin-bottom: 1rem;
-					align-items: center;
-					flex-wrap: wrap;
-				}
-				.plot-controls label {
-					font-size: 0.9rem;
-					color: #666;
-				}
-				.plot-controls input[type="range"] {
-					flex: 1;
-					min-width: 150px;
-				}
-				.plot-controls button {
-					padding: 0.5rem 1rem;
-					border: 1px solid #ddd;
-					border-radius: 4px;
-					background: white;
-					cursor: pointer;
-					font-size: 0.9rem;
-				}
-				.plot-controls button:hover {
-					background: #f8f9fa;
-				}
-				#plot3d {
-					width: 100%;
-					height: 600px;
-				}
 			`)),
 		),
 		Body(
 			Div(Class("container"),
 				EncoderFragment(data),
-				plotSection(),
 			),
 		),
 	)
@@ -569,246 +430,4 @@ func encoderRow(label string, values EncoderValues) g.Node {
 			),
 		),
 	)
-}
-
-func plotSection() g.Node {
-	return Div(Class("plot-container"),
-		H2(g.Text("3D Position Plot")),
-		Div(Class("plot-controls"),
-			Label(
-				g.Attr("for", "timeWindow"),
-				g.Text("Time Window: "),
-			),
-			Input(
-				Type("range"),
-				ID("timeWindow"),
-				g.Attr("min", "10"),
-				g.Attr("max", "300"),
-				g.Attr("value", "60"),
-				g.Attr("step", "10"),
-			),
-			Span(ID("timeWindowValue"), g.Text("60s")),
-			Button(
-				ID("resetView"),
-				g.Text("Reset View"),
-			),
-			Button(
-				ID("clearPlot"),
-				g.Text("Clear Plot"),
-			),
-		),
-		Div(ID("plot3d")),
-		Script(g.Raw(`
-			let plotData = {
-				x: [],
-				y: [],
-				z: [],
-				mode: 'lines+markers',
-				type: 'scatter3d',
-				marker: {
-					size: 4,
-					color: [],
-					colorscale: 'Viridis',
-					showscale: true,
-					colorbar: {
-						title: 'Time'
-					}
-				},
-				line: {
-					color: 'rgba(0, 123, 255, 0.6)',
-					width: 2
-				}
-			};
-
-			let layout = {
-				title: 'Encoder Position (X, Y, Z)',
-				scene: {
-					xaxis: { title: 'X (mm)' },
-					yaxis: { title: 'Y (mm)' },
-					zaxis: { title: 'Z (mm)' },
-					camera: {
-						eye: { x: 1.5, y: 1.5, z: 1.5 }
-					}
-				},
-				margin: { l: 0, r: 0, t: 30, b: 0 },
-				height: 600
-			};
-
-			let config = {
-				responsive: true,
-				displayModeBar: true,
-				modeBarButtonsToRemove: ['pan2d', 'lasso2d'],
-				displaylogo: false
-			};
-
-			let timeWindow = 60; // seconds
-			let startTime = Date.now();
-
-			function updatePlot() {
-				// Use restyle to update only the data, preserving camera position
-				Plotly.restyle('plot3d', {
-					x: [plotData.x],
-					y: [plotData.y],
-					z: [plotData.z],
-					'marker.color': [plotData.marker.color]
-				}, [0]);
-			}
-
-			function addPoint(x, y, z, timestamp) {
-				const now = Date.now();
-				const pointTime = timestamp.getTime ? timestamp.getTime() : new Date(timestamp).getTime();
-				const age = (now - pointTime) / 1000; // age in seconds
-
-				// Filter by time window
-				if (age > timeWindow) {
-					return;
-				}
-
-				plotData.x.push(x);
-				plotData.y.push(y);
-				plotData.z.push(z);
-				
-				// Color by time (newer = brighter)
-				const normalizedAge = Math.max(0, 1 - (age / timeWindow));
-				plotData.marker.color.push(normalizedAge);
-
-				// Remove old points
-				while (plotData.x.length > 0) {
-					const firstPointTime = startTime - (timeWindow * 1000);
-					if (plotData.marker.color[0] <= 0) {
-						plotData.x.shift();
-						plotData.y.shift();
-						plotData.z.shift();
-						plotData.marker.color.shift();
-					} else {
-						break;
-					}
-				}
-
-				updatePlot();
-			}
-
-			function loadHistory(points) {
-				plotData.x = [];
-				plotData.y = [];
-				plotData.z = [];
-				plotData.marker.color = [];
-				startTime = Date.now();
-
-				points.forEach(point => {
-					const timestamp = new Date(point.timestamp);
-					addPoint(point.x, point.y, point.z, timestamp);
-				});
-
-				// Only create new plot if it doesn't exist, otherwise update
-				const plotExists = document.getElementById('plot3d').data !== undefined;
-				if (!plotExists) {
-					Plotly.newPlot('plot3d', [plotData], layout, config);
-				} else {
-					updatePlot();
-				}
-			}
-
-			// WebSocket connection
-			let ws;
-			function connectWebSocket() {
-				const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-				ws = new WebSocket(protocol + '//' + window.location.host + '/ws/encoder');
-
-				ws.onmessage = function(event) {
-					const data = JSON.parse(event.data);
-					if (data.type === 'history') {
-						loadHistory(data.points);
-					} else if (data.type === 'point') {
-						const timestamp = new Date(data.point.timestamp);
-						addPoint(data.point.x, data.point.y, data.point.z, timestamp);
-					}
-				};
-
-				ws.onerror = function(error) {
-					console.error('WebSocket error:', error);
-				};
-
-				ws.onclose = function() {
-					console.log('WebSocket closed, reconnecting...');
-					setTimeout(connectWebSocket, 1000);
-				};
-			}
-
-			// Initialize plot
-			Plotly.newPlot('plot3d', [plotData], layout, config);
-
-			// Connect WebSocket
-			connectWebSocket();
-
-			// Time window control
-			document.getElementById('timeWindow').addEventListener('input', function(e) {
-				timeWindow = parseInt(e.target.value);
-				document.getElementById('timeWindowValue').textContent = timeWindow + 's';
-				// Filter existing points based on new time window
-				const now = Date.now();
-				const filtered = {
-					x: [],
-					y: [],
-					z: [],
-					color: []
-				};
-				for (let i = 0; i < plotData.x.length; i++) {
-					// Recalculate age for each point
-					const pointAge = plotData.marker.color[i] > 0 ? 
-						(1 - plotData.marker.color[i]) * timeWindow : timeWindow + 1;
-					if (pointAge <= timeWindow) {
-						filtered.x.push(plotData.x[i]);
-						filtered.y.push(plotData.y[i]);
-						filtered.z.push(plotData.z[i]);
-						// Recalculate normalized age
-						const normalizedAge = Math.max(0, 1 - (pointAge / timeWindow));
-						filtered.color.push(normalizedAge);
-					}
-				}
-				plotData.x = filtered.x;
-				plotData.y = filtered.y;
-				plotData.z = filtered.z;
-				plotData.marker.color = filtered.color;
-				updatePlot();
-			});
-
-			// Reset view button
-			document.getElementById('resetView').addEventListener('click', function() {
-				layout.scene.camera.eye = { x: 1.5, y: 1.5, z: 1.5 };
-				Plotly.relayout('plot3d', layout);
-			});
-
-			// Clear plot button
-			document.getElementById('clearPlot').addEventListener('click', function() {
-				plotData.x = [];
-				plotData.y = [];
-				plotData.z = [];
-				plotData.marker.color = [];
-				startTime = Date.now();
-				updatePlot();
-			});
-		`)),
-	)
-}
-
-func broadcastDataPoint(point DataPoint) {
-	data, err := json.Marshal(map[string]interface{}{
-		"type":  "point",
-		"point": point,
-	})
-	if err != nil {
-		return
-	}
-
-	wsClientsMu.RLock()
-	defer wsClientsMu.RUnlock()
-
-	for conn := range wsClients {
-		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
-			// Remove dead connections
-			delete(wsClients, conn)
-			conn.Close()
-		}
-	}
 }
