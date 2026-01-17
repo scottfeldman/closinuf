@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"os/signal"
@@ -27,10 +28,6 @@ type Encoder struct {
 	mu            sync.RWMutex    // protects this encoder's state
 }
 
-var (
-	encoders [3]*Encoder // X=0, Y=1, Z=2
-)
-
 const (
 	countsPerRev       = 2400.0                  // 600 PPR × 4 (full quadrature)
 	wheelDiameter      = 50.0                    // wheel diameter in mm
@@ -49,6 +46,18 @@ type EncoderValues struct {
 	Distance float64 `json:"distance"` // distance in mm from zero
 	Label    string  `json:"label"`
 }
+
+type Point struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+	Z float64 `json:"z"`
+}
+
+var (
+	encoders [3]*Encoder // X=0, Y=1, Z=2
+	points   []Point     // accumulated points
+	pointsMu sync.RWMutex
+)
 
 func main() {
 	const (
@@ -189,7 +198,7 @@ func main() {
 		return EncoderFragment(data).Render(c)
 	})
 
-	// Zero endpoint to reset all encoder counts
+	// Zero endpoint to reset all encoder counts and clear points
 	app.Post("/api/encoder/zero", func(c *fiber.Ctx) error {
 		for _, enc := range encoders {
 			if enc != nil {
@@ -198,7 +207,61 @@ func main() {
 				enc.mu.Unlock()
 			}
 		}
+		pointsMu.Lock()
+		points = []Point{}
+		pointsMu.Unlock()
 		return c.SendStatus(200)
+	})
+
+	// Add point endpoint - saves current coordinates
+	app.Post("/api/points/add", func(c *fiber.Ctx) error {
+		data := getEncoderData()
+		pointsMu.Lock()
+		points = append(points, Point{
+			X: data.X.Distance,
+			Y: data.Y.Distance,
+			Z: data.Z.Distance,
+		})
+		pointsMu.Unlock()
+		return c.SendStatus(200)
+	})
+
+	// Get point count endpoint - returns HTML fragment
+	app.Get("/api/points/count", func(c *fiber.Ctx) error {
+		pointsMu.RLock()
+		count := len(points)
+		pointsMu.RUnlock()
+		c.Type("html")
+		return g.Text(fmt.Sprintf("Points: %d", count)).Render(c)
+	})
+
+	// Save points endpoint - saves to ASC file (FreeCAD point cloud format)
+	app.Get("/api/points/save", func(c *fiber.Ctx) error {
+		filename := c.Query("filename", "points.asc")
+		if filename == "" {
+			filename = "points.asc"
+		}
+
+		pointsMu.Lock()
+		if len(points) == 0 {
+			pointsMu.Unlock()
+			return c.Status(400).JSON(fiber.Map{"error": "No points to save"})
+		}
+
+		// Create ASC content - space-separated X Y Z format for FreeCAD
+		var ascData string
+		for _, p := range points {
+			ascData += fmt.Sprintf("%.6f %.6f %.6f\n", p.X, p.Y, p.Z)
+		}
+
+		// Clear points after saving
+		points = []Point{}
+		pointsMu.Unlock()
+
+		// Set headers for file download
+		c.Set("Content-Type", "text/plain")
+		c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+		return c.SendString(ascData)
 	})
 
 	// Start server in goroutine
@@ -259,6 +322,21 @@ func Page(data EncoderData) g.Node {
 			Meta(Name("viewport"), Content("width=device-width, initial-scale=1")),
 			TitleEl(g.Text("Rotary Encoder Monitor")),
 			Script(Src("https://unpkg.com/htmx.org@2.0.3/dist/htmx.min.js")),
+			Script(g.Raw(`
+				document.addEventListener('DOMContentLoaded', function() {
+					const saveLink = document.getElementById('save-link');
+					const filenameInput = document.getElementById('filename-input');
+					if (saveLink && filenameInput) {
+						saveLink.addEventListener('click', function(e) {
+							const filename = filenameInput.value.trim() || 'points.asc';
+							this.href = '/api/points/save?filename=' + encodeURIComponent(filename);
+							setTimeout(function() {
+								htmx.trigger('#points-count', 'htmx:trigger');
+							}, 500);
+						});
+					}
+				});
+			`)),
 			StyleEl(g.Raw(`
 				body {
 					font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
@@ -342,7 +420,7 @@ func Page(data EncoderData) g.Node {
 					margin-left: 0.25rem;
 				}
 				.zero-button {
-					background: #dc3545;
+					background: #007bff;
 					color: white;
 					border: none;
 					padding: 0.75rem 1.5rem;
@@ -353,20 +431,130 @@ func Page(data EncoderData) g.Node {
 					transition: background 0.2s;
 				}
 				.zero-button:hover {
-					background: #c82333;
+					background: #0056b3;
 				}
 				.zero-button:active {
-					background: #bd2130;
+					background: #004085;
 				}
 				.button-container {
 					text-align: center;
 					margin-top: 2rem;
+					display: flex;
+					gap: 1rem;
+					justify-content: center;
+					align-items: center;
+					flex-wrap: wrap;
+				}
+				.point-button {
+					background: #28a745;
+					color: white;
+					border: none;
+					padding: 0.75rem 1.5rem;
+					border-radius: 6px;
+					font-size: 1rem;
+					font-weight: 600;
+					cursor: pointer;
+					transition: background 0.2s;
+				}
+				.point-button:hover {
+					background: #218838;
+				}
+				.point-button:active {
+					background: #1e7e34;
+				}
+				.save-button {
+					background: #ffc107;
+					color: #212529;
+					border: none;
+					padding: 0.75rem 1.5rem;
+					border-radius: 6px;
+					font-size: 1rem;
+					font-weight: 600;
+					cursor: pointer;
+					transition: background 0.2s;
+				}
+				.save-button:hover {
+					background: #e0a800;
+				}
+				.save-button:active {
+					background: #d39e00;
+				}
+				.points-count {
+					font-size: 1rem;
+					color: #666;
+					font-weight: 500;
+					padding: 0.75rem 1rem;
+					background: #f8f9fa;
+					border-radius: 6px;
+				}
+				.filename-input {
+					padding: 0.75rem 1rem;
+					border: 2px solid #dee2e6;
+					border-radius: 6px;
+					font-size: 1rem;
+					width: 150px;
+					transition: border-color 0.2s;
+				}
+				.filename-input:focus {
+					outline: none;
+					border-color: #007bff;
+				}
+				.save-group {
+					display: flex;
+					gap: 0.5rem;
+					align-items: center;
 				}
 			`)),
 		),
 		Body(
 			Div(Class("container"),
 				EncoderFragment(data),
+				Div(Class("button-container"),
+					Button(
+						Class("point-button"),
+						hx.Post("/api/points/add"),
+						hx.Trigger("click"),
+						hx.Swap("none"),
+						hx.Target("#points-count"),
+						hx.On("htmx:afterRequest", "htmx.trigger('#points-count', 'htmx:trigger')"),
+						g.Text("Point"),
+					),
+					Span(
+						ID("points-count"),
+						Class("points-count"),
+						hx.Get("/api/points/count"),
+						hx.Trigger("every 1s"),
+						hx.Swap("innerHTML"),
+						g.Text("Points: 0"),
+					),
+					Div(
+						Class("save-group"),
+						Input(
+							ID("filename-input"),
+							Name("filename"),
+							Type("text"),
+							Class("filename-input"),
+							Value("points.asc"),
+							Placeholder("filename.asc"),
+						),
+						A(
+							ID("save-link"),
+							Class("save-button"),
+							Href("/api/points/save?filename=points.asc"),
+							hx.Boost("false"),
+							hx.On("htmx:afterRequest", "htmx.trigger('#points-count', 'htmx:trigger')"),
+							g.Text("Save"),
+						),
+					),
+					Button(
+						Class("zero-button"),
+						hx.Post("/api/encoder/zero"),
+						hx.Trigger("click"),
+						hx.Swap("none"),
+						hx.On("htmx:afterRequest", "document.getElementById('points-count').dispatchEvent(new Event('htmx:trigger'))"),
+						g.Text("Zero All Counts"),
+					),
+				),
 			),
 		),
 	)
@@ -392,15 +580,6 @@ func EncoderFragment(data EncoderData) g.Node {
 				encoderRow("X", data.X),
 				encoderRow("Y", data.Y),
 				encoderRow("Z", data.Z),
-			),
-		),
-		Div(Class("button-container"),
-			Button(
-				Class("zero-button"),
-				hx.Post("/api/encoder/zero"),
-				hx.Trigger("click"),
-				hx.Swap("none"),
-				g.Text("Zero All Counts"),
 			),
 		),
 	)
