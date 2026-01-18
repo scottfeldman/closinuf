@@ -63,12 +63,13 @@ func main() {
 	const (
 		chipName = "gpiochip0"
 		// GPIO pins for each encoder: [A, B]
-		xOffsetA = 17 // GPIO17
-		xOffsetB = 18 // GPIO18
-		yOffsetA = 19 // GPIO19
-		yOffsetB = 20 // GPIO20
-		zOffsetA = 21 // GPIO21
-		zOffsetB = 22 // GPIO22
+		xOffsetA       = 17 // GPIO17
+		xOffsetB       = 18 // GPIO18
+		yOffsetA       = 19 // GPIO19
+		yOffsetB       = 20 // GPIO20
+		zOffsetA       = 21 // GPIO21
+		zOffsetB       = 22 // GPIO22
+		pointBtnOffset = 23 // GPIO23 - physical button for adding points
 	)
 
 	// Quadrature table: +1 = CW, -1 = CCW, 0 = no/invalid change
@@ -103,43 +104,82 @@ func main() {
 		enc.lastReadCount = enc.counter
 		enc.mu.Unlock()
 
-		func(enc *Encoder, offsetA, offsetB int, label string) {
-			handler := func(evt gpiocdev.LineEvent) {
-				values := make([]int, 2)
-				if err := enc.lines.Values(values); err != nil {
-					return
-				}
-
-				currentState := uint8((values[0] << 1) | values[1])
-
-				enc.mu.Lock()
-				if currentState != enc.lastState {
-					idx := int(enc.lastState)<<2 | int(currentState)
-					delta := deltaTable[idx]
-
-					if delta != 0 {
-						enc.counter += delta
-					}
-
-					enc.lastState = currentState
-				}
-				enc.mu.Unlock()
+		handler := func(evt gpiocdev.LineEvent) {
+			values := make([]int, 2)
+			if err := enc.lines.Values(values); err != nil {
+				return
 			}
 
-			var err error
-			enc.lines, err = gpiocdev.RequestLines(chipName,
-				[]int{offsetA, offsetB},
-				gpiocdev.AsInput,
-				gpiocdev.WithPullUp,
-				gpiocdev.WithEventHandler(handler),
-				gpiocdev.WithBothEdges,
-				gpiocdev.WithConsumer("rotary-encoder-"+label),
-			)
-			if err != nil {
-				// If GPIO fails, continue anyway (for development/testing)
-				// In production, you might want to exit or handle differently
+			currentState := uint8((values[0] << 1) | values[1])
+
+			enc.mu.Lock()
+			if currentState != enc.lastState {
+				idx := int(enc.lastState)<<2 | int(currentState)
+				delta := deltaTable[idx]
+
+				if delta != 0 {
+					enc.counter += delta
+				}
+
+				enc.lastState = currentState
 			}
-		}(enc, cfg.offsetA, cfg.offsetB, cfg.label)
+			enc.mu.Unlock()
+		}
+
+		var err error
+		enc.lines, err = gpiocdev.RequestLines(chipName,
+			[]int{cfg.offsetA, cfg.offsetB},
+			gpiocdev.AsInput,
+			gpiocdev.WithPullUp,
+			gpiocdev.WithEventHandler(handler),
+			gpiocdev.WithBothEdges,
+			gpiocdev.WithConsumer("rotary-encoder-"+cfg.label),
+		)
+		if err != nil {
+			// If GPIO fails, continue anyway (for development/testing)
+			// In production, you might want to exit or handle differently
+		}
+	}
+
+	// Setup GPIO for physical Point button
+	var lastBtnPressTime time.Time
+	const btnDebounceMs = 50 // 50ms debounce even for bounceless button
+
+	pointBtnHandler := func(evt gpiocdev.LineEvent) {
+		// Only process falling edge (button press, assuming pull-up)
+		if evt.Type != gpiocdev.LineEventFallingEdge {
+			return
+		}
+
+		// Simple debounce check
+		now := time.Now()
+		if now.Sub(lastBtnPressTime) < time.Millisecond*btnDebounceMs {
+			return
+		}
+		lastBtnPressTime = now
+
+		// Add point with current encoder coordinates
+		data := getEncoderData()
+		pointsMu.Lock()
+		points = append(points, Point{
+			X: data.X.Distance,
+			Y: data.Y.Distance,
+			Z: data.Z.Distance,
+		})
+		pointsMu.Unlock()
+	}
+
+	_, err := gpiocdev.RequestLines(chipName,
+		[]int{pointBtnOffset},
+		gpiocdev.AsInput,
+		gpiocdev.WithPullUp,
+		gpiocdev.WithEventHandler(pointBtnHandler),
+		gpiocdev.WithBothEdges,
+		gpiocdev.WithConsumer("point-button"),
+	)
+	if err != nil {
+		os.Stderr.WriteString("Warning: Failed to initialize point button GPIO (GPIO" + fmt.Sprintf("%d", pointBtnOffset) + "): " + err.Error() + "\n")
+		os.Stderr.WriteString("Physical button will not be available. Web interface Point button will still work.\n")
 	}
 
 	// Periodic RPM calculation goroutine for all encoders
@@ -226,13 +266,47 @@ func main() {
 		return c.SendStatus(200)
 	})
 
-	// Get point count endpoint - returns HTML fragment
+	// Get point count endpoint - returns HTML fragment or JSON
 	app.Get("/api/points/count", func(c *fiber.Ctx) error {
 		pointsMu.RLock()
 		count := len(points)
 		pointsMu.RUnlock()
+
+		// Check if client wants JSON (for JavaScript fetch)
+		if c.Get("Accept") == "application/json" || c.Query("json") == "true" {
+			return c.JSON(fiber.Map{"count": count})
+		}
+
 		c.Type("html")
 		return g.Text(fmt.Sprintf("Points: %d", count)).Render(c)
+	})
+
+	// Check and save points endpoint - validates points before saving
+	app.Get("/api/points/check-save", func(c *fiber.Ctx) error {
+		filename := c.Query("filename", "points.asc")
+		if filename == "" {
+			filename = "points.asc"
+		}
+		// Add .asc extension if not present
+		if len(filename) < 4 || filename[len(filename)-4:] != ".asc" {
+			filename += ".asc"
+		}
+
+		pointsMu.RLock()
+		count := len(points)
+		pointsMu.RUnlock()
+
+		// If no points, return error message using hx-swap-oob
+		if count == 0 {
+			c.Type("html")
+			// Return empty response for main swap, error message via oob
+			return g.Raw(`<div id="save-error" hx-swap-oob="true" class="save-error">No points to save. Please collect some points first.</div>`).Render(c)
+		}
+
+		// If points exist, clear any error message and redirect to actual save endpoint
+		c.Type("html")
+		c.Set("HX-Redirect", "/api/points/save?filename="+filename)
+		return g.Raw(`<div id="save-error" hx-swap-oob="true" style="display: none;"></div>`).Render(c)
 	})
 
 	// Save points endpoint - saves to ASC file (FreeCAD point cloud format)
@@ -240,6 +314,10 @@ func main() {
 		filename := c.Query("filename", "points.asc")
 		if filename == "" {
 			filename = "points.asc"
+		}
+		// Add .asc extension if not present
+		if len(filename) < 4 || filename[len(filename)-4:] != ".asc" {
+			filename += ".asc"
 		}
 
 		pointsMu.Lock()
@@ -323,13 +401,31 @@ func Page(data EncoderData) g.Node {
 			TitleEl(g.Text("Rotary Encoder Monitor")),
 			Script(Src("https://unpkg.com/htmx.org@2.0.3/dist/htmx.min.js")),
 			Script(g.Raw(`
+				function checkPointsCount() {
+					return fetch('/api/points/count?json=true', {
+						headers: { 'Accept': 'application/json' }
+					})
+						.then(r => r.json())
+						.then(data => data.count);
+				}
 				document.addEventListener('DOMContentLoaded', function() {
 					const saveLink = document.getElementById('save-link');
 					const filenameInput = document.getElementById('filename-input');
 					if (saveLink && filenameInput) {
-						saveLink.addEventListener('click', function(e) {
-							const filename = filenameInput.value.trim() || 'points.asc';
-							this.href = '/api/points/save?filename=' + encodeURIComponent(filename);
+						saveLink.addEventListener('click', async function(e) {
+							e.preventDefault();
+							// Check if there are any points before saving
+							const count = await checkPointsCount();
+							if (count === 0) {
+								alert('No points to save. Please collect some points first.');
+								return;
+							}
+							let filename = filenameInput.value.trim() || 'points.asc';
+							// Add .asc extension if not present
+							if (filename.length < 4 || filename.slice(-4) !== '.asc') {
+								filename += '.asc';
+							}
+							window.location.href = '/api/points/save?filename=' + encodeURIComponent(filename);
 							setTimeout(function() {
 								htmx.trigger('#points-count', 'htmx:trigger');
 							}, 500);
@@ -503,6 +599,33 @@ func Page(data EncoderData) g.Node {
 					display: flex;
 					gap: 0.5rem;
 					align-items: center;
+					position: relative;
+				}
+				.save-error {
+					position: absolute;
+					top: 100%;
+					left: 50%;
+					transform: translateX(-50%);
+					margin-top: 0.5rem;
+					color: #dc3545;
+					background: #f8d7da;
+					border: 1px solid #f5c6cb;
+					padding: 0.75rem 1rem;
+					border-radius: 6px;
+					text-align: center;
+					white-space: nowrap;
+					z-index: 10;
+					box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+					animation: fadeOut 0.5s ease-out 5s forwards;
+				}
+				@keyframes fadeOut {
+					from {
+						opacity: 1;
+					}
+					to {
+						opacity: 0;
+						visibility: hidden;
+					}
 				}
 			`)),
 		),
@@ -517,7 +640,7 @@ func Page(data EncoderData) g.Node {
 						hx.Swap("none"),
 						hx.Target("#points-count"),
 						hx.On("htmx:afterRequest", "htmx.trigger('#points-count', 'htmx:trigger')"),
-						g.Text("Point"),
+						g.Text("Capture Point"),
 					),
 					Span(
 						ID("points-count"),
@@ -537,13 +660,18 @@ func Page(data EncoderData) g.Node {
 							Value("points.asc"),
 							Placeholder("filename.asc"),
 						),
-						A(
-							ID("save-link"),
+						Button(
+							ID("save-button"),
 							Class("save-button"),
-							Href("/api/points/save?filename=points.asc"),
-							hx.Boost("false"),
+							hx.Get("/api/points/check-save"),
+							hx.Include("#filename-input"),
+							hx.Swap("none"),
 							hx.On("htmx:afterRequest", "htmx.trigger('#points-count', 'htmx:trigger')"),
 							g.Text("Save"),
+						),
+						Div(
+							ID("save-error"),
+							g.Attr("style", "display: none;"),
 						),
 					),
 					Button(
