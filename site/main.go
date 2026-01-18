@@ -330,7 +330,7 @@ func main() {
 		if count == 0 {
 			c.Type("html")
 			// Return empty response for main swap, error message via oob
-			return g.Raw(`<div id="save-error" hx-swap-oob="true" class="save-error">No points to save. Please collect some points first.</div>`).Render(c)
+			return g.Raw(`<div id="save-error" hx-swap-oob="true" class="save-error">No points to save. Please capture some points first.</div>`).Render(c)
 		}
 
 		// If points exist, clear any error message and redirect to actual save endpoint
@@ -362,8 +362,6 @@ func main() {
 			ascData += fmt.Sprintf("%.6f %.6f %.6f\n", p.X, p.Y, p.Z)
 		}
 
-		// Clear points after saving
-		points = []Point{}
 		pointsMu.Unlock()
 
 		// Set headers for file download
@@ -464,22 +462,39 @@ func Page(data EncoderData, unit string) g.Node {
 				});
 			`)),
 			StyleEl(g.Raw(`
+				@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+				* {
+					box-sizing: border-box;
+				}
 				body {
-					font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-					max-width: 1000px;
-					margin: 0 auto;
+					font-family: 'Courier New', 'Courier', monospace;
+					min-height: 100vh;
+					display: flex;
+					flex-direction: column;
+					justify-content: center;
+					align-items: center;
+					margin: 0;
 					padding: 2rem;
-					background: #f5f5f5;
+					background: #0a0a0a;
+					color: #00ff41;
+					text-shadow: 0 0 5px #00ff41, 0 0 10px #00ff41;
 				}
 				.container {
-					background: white;
-					border-radius: 12px;
-					padding: 1rem;
-					box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+					position: relative;
+					max-width: 1000px;
+					width: 100%;
+					background: #0d0d0d;
+					border-radius: 8px;
+					padding: 1.5rem;
+					border: 2px solid #00ff41;
+					box-shadow: 0 0 20px rgba(0, 255, 65, 0.3), inset 0 0 20px rgba(0, 255, 65, 0.05);
 				}
 				h1 {
 					margin-top: 0;
-					color: #333;
+					color: #00ff41;
+					text-shadow: 0 0 10px #00ff41, 0 0 20px #00ff41;
+					font-family: 'Orbitron', monospace;
+					font-weight: 700;
 				}
 				.encoder-display {
 					display: flex;
@@ -489,86 +504,121 @@ func Page(data EncoderData, unit string) g.Node {
 					justify-content: center;
 				}
 				.encoder-card {
-					background: white;
-					border-radius: 8px;
+					background: #0a0a0a;
+					border-radius: 6px;
 					padding: 1rem;
-					box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+					border: 1px solid #00ff41;
+					box-shadow: 0 0 10px rgba(0, 255, 65, 0.2), inset 0 0 10px rgba(0, 255, 65, 0.05);
 					min-width: 200px;
 					flex: 1;
 					text-align: center;
 				}
 				.encoder-label {
 					font-weight: bold;
-					color: #007bff;
+					color: #00ff41;
 					font-size: 1.2rem;
 					margin-bottom: 0.5rem;
+					text-shadow: 0 0 8px #00ff41, 0 0 15px #00ff41;
+					font-family: 'Orbitron', monospace;
+					font-weight: 700;
 				}
 				.encoder-distance {
 					font-size: 2rem;
 					font-weight: 700;
-					color: #333;
+					color: #00ff41;
 					line-height: 1.2;
 					margin-bottom: 0.5rem;
 					font-variant-numeric: tabular-nums;
+					text-shadow: 0 0 10px #00ff41, 0 0 20px #00ff41;
+					font-family: 'Courier New', monospace;
 				}
 				.encoder-unit-large {
 					font-size: 1.5rem;
-					color: #666;
+					color: #00ff41;
 					margin-left: 0.25rem;
 					font-weight: 400;
+					text-shadow: 0 0 8px #00ff41;
 				}
 				.encoder-details {
 					display: flex;
 					flex-direction: column;
 					gap: 0.25rem;
 					font-size: 0.85rem;
-					color: #666;
+					color: #00cc33;
+					text-shadow: 0 0 5px #00cc33;
 				}
 				.encoder-detail-item {
 					font-variant-numeric: tabular-nums;
 				}
 				.encoder-unit-small {
-					color: #999;
+					color: #00cc33;
 					margin-left: 0.15rem;
+					text-shadow: 0 0 3px #00cc33;
 				}
 				.encoder-other-units {
 					font-size: 0.75rem;
-					color: #999;
+					color: #009922;
 					margin-top: 0.25rem;
+					text-shadow: 0 0 3px #009922;
 				}
-				.units-button {
-					background: #6c757d;
-					color: white;
-					border: none;
+				.units-button, .zero-button, .point-button, .save-button {
+					background: #0a0a0a;
+					color: #00ff41;
+					border: 2px solid #00ff41;
 					padding: 0.75rem 1.5rem;
-					border-radius: 6px;
+					border-radius: 4px;
 					font-size: 1rem;
 					font-weight: 600;
 					cursor: pointer;
-					transition: background 0.2s;
+					transition: all 0.15s ease;
+					font-family: 'Courier New', monospace;
+					text-shadow: 0 0 5px #00ff41;
+					box-shadow: 0 0 10px rgba(0, 255, 65, 0.3);
+					position: relative;
+					-webkit-tap-highlight-color: transparent;
 				}
-				.units-button:hover {
-					background: #5a6268;
+				.units-button:hover, .zero-button:hover, .point-button:hover, .save-button:hover {
+					background: rgba(0, 255, 65, 0.1);
+					box-shadow: 0 0 15px rgba(0, 255, 65, 0.5);
+					text-shadow: 0 0 8px #00ff41, 0 0 15px #00ff41;
 				}
-				.units-button:active {
-					background: #545b62;
+				.units-button:active, .zero-button:active, .point-button:active, .save-button:active {
+					background: rgba(0, 255, 65, 0.25);
+					box-shadow: 0 0 25px rgba(0, 255, 65, 0.8), 0 0 40px rgba(0, 255, 65, 0.4);
+					text-shadow: 0 0 12px #00ff41, 0 0 20px #00ff41;
+					transform: scale(0.98);
+					border-color: #00ff88;
 				}
-				.zero-button {
-					background: #007bff;
-					color: white;
-					border: none;
-					padding: 0.75rem 1.5rem;
-					border-radius: 6px;
-					font-size: 1rem;
-					font-weight: 600;
-					cursor: pointer;
-					transition: background 0.2s;
+				.point-button {
+					background: rgba(0, 255, 65, 0.15);
+					border-color: #00ff41;
+					box-shadow: 0 0 15px rgba(0, 255, 65, 0.4);
 				}
-				.zero-button:hover {
-					background: #0056b3;
+				.point-button:hover {
+					background: rgba(0, 255, 65, 0.25);
+					box-shadow: 0 0 20px rgba(0, 255, 65, 0.6);
 				}
-				.zero-button:active {
-					background: #004085;
+				.point-button:active {
+					background: rgba(0, 255, 65, 0.35);
+					box-shadow: 0 0 30px rgba(0, 255, 65, 0.9), 0 0 50px rgba(0, 255, 65, 0.5);
+				}
+				.save-button {
+					background: rgba(255, 200, 0, 0.1);
+					border-color: #ffc800;
+					color: #ffc800;
+					text-shadow: 0 0 5px #ffc800;
+					box-shadow: 0 0 10px rgba(255, 200, 0, 0.3);
+				}
+				.save-button:hover {
+					background: rgba(255, 200, 0, 0.2);
+					box-shadow: 0 0 15px rgba(255, 200, 0, 0.5);
+					text-shadow: 0 0 8px #ffc800, 0 0 15px #ffc800;
+				}
+				.save-button:active {
+					background: rgba(255, 200, 0, 0.3);
+					box-shadow: 0 0 25px rgba(255, 200, 0, 0.8), 0 0 40px rgba(255, 200, 0, 0.4);
+					text-shadow: 0 0 12px #ffc800, 0 0 20px #ffc800;
+					border-color: #ffd700;
 				}
 				.button-container {
 					text-align: center;
@@ -579,82 +629,62 @@ func Page(data EncoderData, unit string) g.Node {
 					align-items: center;
 					flex-wrap: wrap;
 				}
-				.point-button {
-					background: #28a745;
-					color: white;
-					border: none;
-					padding: 0.75rem 1.5rem;
-					border-radius: 6px;
-					font-size: 1rem;
-					font-weight: 600;
-					cursor: pointer;
-					transition: background 0.2s;
-				}
-				.point-button:hover {
-					background: #218838;
-				}
-				.point-button:active {
-					background: #1e7e34;
-				}
-				.save-button {
-					background: #ffc107;
-					color: #212529;
-					border: none;
-					padding: 0.75rem 1.5rem;
-					border-radius: 6px;
-					font-size: 1rem;
-					font-weight: 600;
-					cursor: pointer;
-					transition: background 0.2s;
-				}
-				.save-button:hover {
-					background: #e0a800;
-				}
-				.save-button:active {
-					background: #d39e00;
-				}
 				.points-count {
 					font-size: 1rem;
-					color: #666;
+					color: #00ff41;
 					font-weight: 500;
 					padding: 0.75rem 1rem;
-					background: #f8f9fa;
+					background: #0a0a0a;
 					border-radius: 6px;
+					border: 1px solid #00ff41;
+					box-shadow: 0 0 8px rgba(0, 255, 65, 0.2);
+					text-shadow: 0 0 5px #00ff41;
 				}
 				.filename-input {
 					padding: 0.75rem 1rem;
-					border: 2px solid #dee2e6;
+					border: 2px solid #00ff41;
 					border-radius: 6px;
 					font-size: 1rem;
 					width: 150px;
-					transition: border-color 0.2s;
+					background: #0a0a0a;
+					color: #00ff41;
+					font-family: 'Courier New', monospace;
+					text-shadow: 0 0 5px #00ff41;
+					transition: all 0.2s;
+					box-shadow: 0 0 8px rgba(0, 255, 65, 0.2);
 				}
 				.filename-input:focus {
 					outline: none;
-					border-color: #007bff;
+					border-color: #00ff41;
+					box-shadow: 0 0 15px rgba(0, 255, 65, 0.5);
+					text-shadow: 0 0 8px #00ff41;
+				}
+				.filename-input::placeholder {
+					color: #009922;
+					text-shadow: 0 0 3px #009922;
 				}
 				.save-group {
 					display: flex;
 					gap: 0.5rem;
 					align-items: center;
-					position: relative;
 				}
 				.save-error {
 					position: absolute;
-					top: 100%;
+					top: 50%;
 					left: 50%;
-					transform: translateX(-50%);
-					margin-top: 0.5rem;
-					color: #dc3545;
-					background: #f8d7da;
-					border: 1px solid #f5c6cb;
+					transform: translate(-50%, -50%);
+					color: #ff0000;
+					background: rgba(0, 0, 0, 0.95);
+					border: 3px solid #ff0000;
 					padding: 0.75rem 1rem;
 					border-radius: 6px;
 					text-align: center;
 					white-space: nowrap;
-					z-index: 10;
-					box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+					z-index: 1000;
+					box-shadow: 0 0 20px rgba(255, 0, 0, 0.8), inset 0 0 10px rgba(255, 0, 0, 0.2);
 					animation: fadeOut 0.5s ease-out 5s forwards;
+					text-shadow: 0 0 8px #ff0000, 0 0 15px #ff0000;
+					font-weight: bold;
 				}
 				@keyframes fadeOut {
 					from {
@@ -707,10 +737,13 @@ func Page(data EncoderData, unit string) g.Node {
 							hx.On("htmx:afterRequest", "htmx.trigger('#points-count', 'htmx:trigger')"),
 							g.Text("Save"),
 						),
-						Div(
-							ID("save-error"),
-							g.Attr("style", "display: none;"),
-						),
+					),
+					Div(
+						ID("save-error"),
+						g.Attr("style", "display: none;"),
+					),
+					Div(
+						g.Attr("style", "width: 100%; flex-basis: 100%;"),
 					),
 					Button(
 						Class("units-button"),
