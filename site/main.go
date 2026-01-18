@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -221,8 +222,9 @@ func main() {
 	// Serve static HTML page
 	app.Get("/", func(c *fiber.Ctx) error {
 		data := getEncoderData()
+		unit := c.Query("unit", "mm") // Default to mm
 		c.Type("html")
-		return Page(data).Render(c)
+		return Page(data, unit).Render(c)
 	})
 
 	// API endpoint to get encoder data (JSON)
@@ -234,8 +236,36 @@ func main() {
 	// HTMX endpoint that returns HTML fragment
 	app.Get("/api/encoder/htmx", func(c *fiber.Ctx) error {
 		data := getEncoderData()
+		unit := c.Query("unit", "mm") // Default to mm
 		c.Type("html")
-		return EncoderFragment(data).Render(c)
+		return EncoderFragment(data, unit).Render(c)
+	})
+
+	// Cycle units endpoint - redirects to page with new unit
+	app.Get("/api/units/cycle", func(c *fiber.Ctx) error {
+		currentUnit := c.Query("unit", "mm")
+		if currentUnit == "" {
+			currentUnit = "mm"
+		}
+
+		// Cycle: mm -> m -> in -> ft -> mm
+		var nextUnit string
+		switch currentUnit {
+		case "mm":
+			nextUnit = "m"
+		case "m":
+			nextUnit = "in"
+		case "in":
+			nextUnit = "ft"
+		case "ft":
+			nextUnit = "mm"
+		default:
+			nextUnit = "mm"
+		}
+
+		// Redirect to page with new unit parameter
+		c.Set("HX-Redirect", "/?unit="+nextUnit)
+		return c.SendStatus(200)
 	})
 
 	// Zero endpoint to reset all encoder counts and clear points
@@ -393,7 +423,7 @@ func getEncoderData() EncoderData {
 	return data
 }
 
-func Page(data EncoderData) g.Node {
+func Page(data EncoderData, unit string) g.Node {
 	return HTML(
 		Head(
 			Meta(Charset("utf-8")),
@@ -444,76 +474,84 @@ func Page(data EncoderData) g.Node {
 				.container {
 					background: white;
 					border-radius: 12px;
-					padding: 2rem;
+					padding: 1rem;
 					box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 				}
 				h1 {
 					margin-top: 0;
 					color: #333;
 				}
-				.encoder-table {
-					width: 100%;
-					border-collapse: collapse;
-					margin-bottom: 2rem;
+				.encoder-display {
+					display: flex;
+					gap: 1rem;
+					margin-bottom: 1rem;
+					flex-wrap: wrap;
+					justify-content: center;
+				}
+				.encoder-card {
 					background: white;
 					border-radius: 8px;
-					overflow: hidden;
+					padding: 1rem;
 					box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-					table-layout: fixed;
-				}
-				.encoder-table thead {
-					background: #007bff;
-					color: white;
-				}
-				.encoder-table th {
-					padding: 1.25rem 1.5rem;
-					text-align: left;
-					font-weight: 600;
-					text-transform: uppercase;
-					font-size: 0.85rem;
-					letter-spacing: 0.5px;
-				}
-				.encoder-table th:nth-child(1) {
-					width: 15%;
-				}
-				.encoder-table th:nth-child(2) {
-					width: 25%;
-				}
-				.encoder-table th:nth-child(3) {
-					width: 25%;
-				}
-				.encoder-table th:nth-child(4) {
-					width: 35%;
-				}
-				.encoder-table td {
-					padding: 1rem 1.5rem;
-					border-bottom: 1px solid #e9ecef;
-					font-variant-numeric: tabular-nums;
-					white-space: nowrap;
-					overflow: hidden;
-					text-overflow: ellipsis;
-				}
-				.encoder-table tbody tr:last-child td {
-					border-bottom: none;
-				}
-				.encoder-table tbody tr:hover {
-					background: #f8f9fa;
+					min-width: 200px;
+					flex: 1;
+					text-align: center;
 				}
 				.encoder-label {
 					font-weight: bold;
 					color: #007bff;
-					font-size: 1.1rem;
+					font-size: 1.2rem;
+					margin-bottom: 0.5rem;
 				}
-				.encoder-value {
-					font-size: 1.1rem;
+				.encoder-distance {
+					font-size: 2rem;
+					font-weight: 700;
 					color: #333;
-					display: inline-block;
-					min-width: 80px;
+					line-height: 1.2;
+					margin-bottom: 0.5rem;
+					font-variant-numeric: tabular-nums;
 				}
-				.encoder-unit {
-					font-size: 0.9rem;
-					color: #999;
+				.encoder-unit-large {
+					font-size: 1.5rem;
+					color: #666;
 					margin-left: 0.25rem;
+					font-weight: 400;
+				}
+				.encoder-details {
+					display: flex;
+					flex-direction: column;
+					gap: 0.25rem;
+					font-size: 0.85rem;
+					color: #666;
+				}
+				.encoder-detail-item {
+					font-variant-numeric: tabular-nums;
+				}
+				.encoder-unit-small {
+					color: #999;
+					margin-left: 0.15rem;
+				}
+				.encoder-other-units {
+					font-size: 0.75rem;
+					color: #999;
+					margin-top: 0.25rem;
+				}
+				.units-button {
+					background: #6c757d;
+					color: white;
+					border: none;
+					padding: 0.75rem 1.5rem;
+					border-radius: 6px;
+					font-size: 1rem;
+					font-weight: 600;
+					cursor: pointer;
+					transition: background 0.2s;
+				}
+				.units-button:hover {
+					background: #5a6268;
+				}
+				.units-button:active {
+					background: #545b62;
 				}
 				.zero-button {
 					background: #007bff;
@@ -631,7 +669,7 @@ func Page(data EncoderData) g.Node {
 		),
 		Body(
 			Div(Class("container"),
-				EncoderFragment(data),
+				EncoderFragment(data, unit),
 				Div(Class("button-container"),
 					Button(
 						Class("point-button"),
@@ -675,6 +713,14 @@ func Page(data EncoderData) g.Node {
 						),
 					),
 					Button(
+						Class("units-button"),
+						hx.Get("/api/units/cycle"),
+						hx.Vals("js:{unit: new URLSearchParams(window.location.search).get('unit') || 'mm'}"),
+						hx.Trigger("click"),
+						hx.Swap("none"),
+						g.Text("Units"),
+					),
+					Button(
 						Class("zero-button"),
 						hx.Post("/api/encoder/zero"),
 						hx.Trigger("click"),
@@ -688,52 +734,165 @@ func Page(data EncoderData) g.Node {
 	)
 }
 
-func EncoderFragment(data EncoderData) g.Node {
+func EncoderFragment(data EncoderData, unit string) g.Node {
 	return Div(
 		hx.Get("/api/encoder/htmx"),
 		hx.Trigger("every 200ms"),
+		hx.Vals("js:{unit: new URLSearchParams(window.location.search).get('unit') || 'mm'}"),
 		hx.Swap("outerHTML"),
 		hx.Target("this"),
 		ID("encoder-data"),
-		Table(Class("encoder-table"),
-			THead(
-				Tr(
-					Th(g.Text("Encoder")),
-					Th(g.Text("Count")),
-					Th(g.Text("RPM")),
-					Th(g.Text("Distance")),
-				),
-			),
-			TBody(
-				encoderRow("X", data.X),
-				encoderRow("Y", data.Y),
-				encoderRow("Z", data.Z),
-			),
+		Div(Class("encoder-display"),
+			encoderDisplay("X", data.X, unit),
+			encoderDisplay("Y", data.Y, unit),
+			encoderDisplay("Z", data.Z, unit),
 		),
 	)
 }
 
-func encoderRow(label string, values EncoderValues) g.Node {
-	return Tr(
-		Td(
-			Span(Class("encoder-label"), g.Text(label)),
+func formatFeetInchesFraction(mm float64) string {
+	// Handle negative values
+	isNegative := mm < 0
+	absMM := mm
+	if isNegative {
+		absMM = -mm
+	}
+
+	// Convert mm to inches
+	totalInches := absMM / 25.4
+	feet := int(totalInches / 12)
+	inches := totalInches - float64(feet*12)
+
+	// Convert fractional part to nearest 1/16
+	sixteenths := int(inches * 16)
+	wholeInches := sixteenths / 16
+	fractionalSixteenths := sixteenths % 16
+
+	// Build the sign prefix
+	sign := ""
+	if isNegative {
+		sign = "-"
+	}
+
+	if fractionalSixteenths == 0 {
+		if feet > 0 {
+			return fmt.Sprintf("%s%d' %d\"", sign, feet, wholeInches)
+		}
+		return fmt.Sprintf("%s%d\"", sign, wholeInches)
+	}
+
+	// Simplify fraction
+	var num, den int
+	switch fractionalSixteenths {
+	case 1, 3, 5, 7, 9, 11, 13, 15:
+		// Can't simplify odd numbers
+		num = fractionalSixteenths
+		den = 16
+	case 2, 6, 10, 14:
+		num = fractionalSixteenths / 2
+		den = 8
+	case 4, 12:
+		num = fractionalSixteenths / 4
+		den = 4
+	case 8:
+		num = 1
+		den = 2
+	}
+
+	if feet > 0 {
+		if wholeInches > 0 {
+			return fmt.Sprintf("%s%d' %d-%d/%d\"", sign, feet, wholeInches, num, den)
+		}
+		return fmt.Sprintf("%s%d' %d/%d\"", sign, feet, num, den)
+	}
+	if wholeInches > 0 {
+		return fmt.Sprintf("%s%d-%d/%d\"", sign, wholeInches, num, den)
+	}
+	return fmt.Sprintf("%s%d/%d\"", sign, num, den)
+}
+
+func encoderDisplay(label string, values EncoderValues, selectedUnit string) g.Node {
+	// Convert to all units
+	distanceMM := values.Distance
+	distanceM := distanceMM / 1000.0
+	distanceInches := distanceMM / 25.4
+	distanceFeetInches := formatFeetInchesFraction(distanceMM)
+
+	// Get selected unit value and label
+	var selectedValue float64
+	var selectedLabel string
+	switch selectedUnit {
+	case "m":
+		selectedValue = distanceM
+		selectedLabel = "m"
+	case "in":
+		selectedValue = distanceInches
+		selectedLabel = "in"
+	case "ft":
+		selectedValue = 0 // Not used, we use formatted string
+		selectedLabel = "ft"
+	default: // mm
+		selectedValue = distanceMM
+		selectedLabel = "mm"
+	}
+
+	// Format selected value
+	var selectedDisplay string
+	if selectedUnit == "ft" {
+		selectedDisplay = distanceFeetInches
+	} else if selectedUnit == "m" {
+		selectedDisplay = fmt.Sprintf("%.3f", selectedValue)
+	} else if selectedUnit == "in" {
+		selectedDisplay = fmt.Sprintf("%.3f", selectedValue)
+	} else {
+		selectedDisplay = fmt.Sprintf("%.2f", selectedValue)
+	}
+
+	// Build other units list (excluding selected)
+	otherUnits := []string{}
+	if selectedUnit != "mm" {
+		otherUnits = append(otherUnits, fmt.Sprintf("%.2f mm", distanceMM))
+	}
+	if selectedUnit != "m" {
+		otherUnits = append(otherUnits, fmt.Sprintf("%.3f m", distanceM))
+	}
+	if selectedUnit != "in" {
+		otherUnits = append(otherUnits, fmt.Sprintf("%.3f in", distanceInches))
+	}
+	if selectedUnit != "ft" {
+		otherUnits = append(otherUnits, distanceFeetInches)
+	}
+
+	var unitLabel g.Node
+	if selectedUnit != "ft" {
+		unitLabel = Span(Class("encoder-unit-large"), g.Text(" "+selectedLabel))
+	}
+	return Div(
+		Class("encoder-card"),
+		Div(
+			Class("encoder-label"),
+			g.Text(label),
 		),
-		Td(
-			Span(Class("encoder-value"),
+		Div(
+			Class("encoder-distance"),
+			g.Text(selectedDisplay),
+			unitLabel,
+		),
+		Div(
+			Class("encoder-details"),
+			Span(
+				Class("encoder-detail-item"),
 				g.Textf("%d", values.Count),
-				Span(Class("encoder-unit"), g.Text("counts")),
+				Span(Class("encoder-unit-small"), g.Text(" counts")),
 			),
-		),
-		Td(
-			Span(Class("encoder-value"),
+			Span(
+				Class("encoder-detail-item"),
 				g.Textf("%.1f", values.RPM),
-				Span(Class("encoder-unit"), g.Text("rpm")),
+				Span(Class("encoder-unit-small"), g.Text(" rpm")),
 			),
-		),
-		Td(
-			Span(Class("encoder-value"),
-				g.Textf("%.2f", values.Distance),
-				Span(Class("encoder-unit"), g.Text("mm")),
+			Span(
+				Class("encoder-detail-item encoder-other-units"),
+				g.Text(strings.Join(otherUnits, " | ")),
 			),
 		),
 	)
