@@ -55,9 +55,12 @@ type Point struct {
 }
 
 var (
-	encoders [3]*Encoder // X=0, Y=1, Z=2
-	points   []Point     // accumulated points
-	pointsMu sync.RWMutex
+	encoders           [3]*Encoder // X=0, Y=1, Z=2
+	points             []Point     // accumulated points
+	pointsMu           sync.RWMutex
+	lastPointAddedTime time.Time
+	btnEventMu         sync.Mutex
+	btnPressHandled    bool // Track if we've already handled the current press
 )
 
 func main() {
@@ -142,145 +145,53 @@ func main() {
 	}
 
 	// Setup GPIO for physical Point button
-	var (
-		lastBtnTriggerTime time.Time
-		lastPinState       int = -1  // Track last known pin state
-		btnDebounceMs          = 300 // 300ms debounce to prevent multiple triggers
-		pointBtnLines      *gpiocdev.Lines
-		recentRisingEdges  []time.Time // Track recent RISING edges to detect button bounce pattern
-		risingEdgesMu      sync.Mutex
-	)
-
 	pointBtnHandler := func(evt gpiocdev.LineEvent) {
 		now := time.Now()
-		eventType := "UNKNOWN"
-		if evt.Type == gpiocdev.LineEventRisingEdge {
-			eventType = "RISING"
-		} else if evt.Type == gpiocdev.LineEventFallingEdge {
-			eventType = "FALLING"
-		}
 
-		// Read current pin state for debugging
-		var currentState int = -1
-		if pointBtnLines != nil {
-			values := make([]int, 1)
-			if err := pointBtnLines.Values(values); err == nil {
-				currentState = values[0]
-			}
-		}
+		btnEventMu.Lock()
+		defer btnEventMu.Unlock()
 
-		os.Stdout.WriteString(fmt.Sprintf("[BTN-DEBUG] GPIO%d: %s edge at %s (seq: %d, pin: %d)\n",
-			pointBtnOffset, eventType, now.Format("15:04:05.000"), evt.Seqno, currentState))
-
-		// Track FALLING edges if they occur
+		// Button has external pullup: HIGH when not pressed, LOW when pressed
 		if evt.Type == gpiocdev.LineEventFallingEdge {
-			os.Stdout.WriteString(fmt.Sprintf("[BTN-DEBUG] *** FALLING EDGE DETECTED *** at %s (seq: %d, pin: %d)\n",
-				now.Format("15:04:05.000"), evt.Seqno, currentState))
-			// Verify pin is actually LOW (pressed state)
-			if pointBtnLines != nil {
-				values := make([]int, 1)
-				if err := pointBtnLines.Values(values); err == nil {
-					if values[0] == 0 {
-						os.Stdout.WriteString(fmt.Sprintf("[BTN-DEBUG] FALLING edge confirmed: pin is LOW (button pressed)\n"))
-					} else {
-						os.Stdout.WriteString(fmt.Sprintf("[BTN-DEBUG] FALLING edge WARNING: pin state is %d (expected 0/LOW)\n", values[0]))
-					}
-				} else {
-					os.Stdout.WriteString(fmt.Sprintf("[BTN-DEBUG] FALLING edge: failed to read pin state: %v\n", err))
-				}
-			}
-			return
-		}
-
-		// Since FALLING edges aren't being detected, use RISING edge with state tracking
-		// Track pin state changes to verify button was actually pressed (went LOW then HIGH)
-		if evt.Type == gpiocdev.LineEventRisingEdge {
-			risingEdgesMu.Lock()
-			// Clean up old edges (older than 100ms)
-			cutoff := now.Add(-100 * time.Millisecond)
-			validEdges := []time.Time{}
-			for _, t := range recentRisingEdges {
-				if t.After(cutoff) {
-					validEdges = append(validEdges, t)
-				}
-			}
-			validEdges = append(validEdges, now)
-			recentRisingEdges = validEdges
-			edgeCount := len(recentRisingEdges)
-			risingEdgesMu.Unlock()
-
-			timeSinceLastTrigger := now.Sub(lastBtnTriggerTime)
-
-			os.Stdout.WriteString(fmt.Sprintf("[BTN-DEBUG] RISING edge - recent edges: %d, last pin state: %d, current: %d, time since trigger: %v\n",
-				edgeCount, lastPinState, currentState, timeSinceLastTrigger))
-
-			// Require debounce time
-			if timeSinceLastTrigger < time.Duration(btnDebounceMs)*time.Millisecond {
-				os.Stdout.WriteString(fmt.Sprintf("[BTN-DEBUG] Rejected: Debounce (only %v since last trigger, need %dms)\n",
-					timeSinceLastTrigger, btnDebounceMs))
-				lastPinState = currentState
+			// State-based debouncing: only trigger once per press-release cycle
+			if btnPressHandled {
 				return
 			}
 
-			// Verify pin is actually HIGH (released state)
-			if pointBtnLines != nil {
-				values := make([]int, 1)
-				if err := pointBtnLines.Values(values); err == nil {
-					if values[0] == 1 {
-						// Accept if:
-						// 1. Multiple edges in quick succession (bounce pattern), OR
-						// 2. Single edge but last state was LOW (button was pressed), OR
-						// 3. Single edge with enough time passed (fallback)
-						wasLow := lastPinState == 0
-						if edgeCount >= 2 || wasLow || timeSinceLastTrigger > 500*time.Millisecond {
-							lastBtnTriggerTime = now
-							lastPinState = values[0]
-							risingEdgesMu.Lock()
-							recentRisingEdges = []time.Time{} // Clear after successful trigger
-							risingEdgesMu.Unlock()
-
-							reason := "multiple edges"
-							if edgeCount < 2 {
-								if wasLow {
-									reason = "pin was LOW before"
-								} else {
-									reason = "enough time passed"
-								}
-							}
-							os.Stdout.WriteString(fmt.Sprintf("[BTN-DEBUG] *** POINT ADDED *** (pin HIGH, %d edges, %s)\n", edgeCount, reason))
-
-							// Add point with current encoder coordinates
-							data := getEncoderData()
-							pointsMu.Lock()
-							points = append(points, Point{
-								X: data.X.Distance,
-								Y: data.Y.Distance,
-								Z: data.Z.Distance,
-							})
-							pointCount := len(points)
-							pointsMu.Unlock()
-
-							os.Stdout.WriteString(fmt.Sprintf("[BTN-DEBUG] Total points now: %d\n", pointCount))
-						} else {
-							os.Stdout.WriteString(fmt.Sprintf("[BTN-DEBUG] Rejected: Single edge, pin wasn't LOW, not enough time\n"))
-							lastPinState = values[0]
-						}
-					} else {
-						os.Stdout.WriteString(fmt.Sprintf("[BTN-DEBUG] Rejected: Pin state is %d (expected 1/HIGH)\n", values[0]))
-						lastPinState = values[0]
-					}
-				} else {
-					os.Stdout.WriteString(fmt.Sprintf("[BTN-DEBUG] Rejected: Failed to read pin state: %v\n", err))
-				}
+			// Time-based debouncing: require minimum time since last point was added
+			// This prevents multiple points from a single button press even with heavy bouncing
+			timeSinceLastPoint := now.Sub(lastPointAddedTime)
+			if timeSinceLastPoint < 500*time.Millisecond {
+				return
 			}
-		} else {
-			// Update pin state for non-RISING edges
-			lastPinState = currentState
+
+			// Mark this press as handled
+			btnPressHandled = true
+
+			// Get current encoder data
+			data := getEncoderData()
+
+			// Add point with current X, Y, Z distances
+			pointsMu.Lock()
+			points = append(points, Point{
+				X: data.X.Distance,
+				Y: data.Y.Distance,
+				Z: data.Z.Distance,
+			})
+			pointsMu.Unlock()
+
+			// Update timestamp when point is actually added
+			lastPointAddedTime = now
+		} else if evt.Type == gpiocdev.LineEventRisingEdge {
+			// On release, reset the handled flag so next press can be processed
+			if btnPressHandled {
+				btnPressHandled = false
+			}
 		}
 	}
 
 	var err error
-	pointBtnLines, err = gpiocdev.RequestLines(chipName,
+	_, err = gpiocdev.RequestLines(chipName,
 		[]int{pointBtnOffset},
 		gpiocdev.AsInput,
 		gpiocdev.WithEventHandler(pointBtnHandler),
