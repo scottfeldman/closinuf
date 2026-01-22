@@ -131,7 +131,6 @@ func main() {
 		enc.lines, err = gpiocdev.RequestLines(chipName,
 			[]int{cfg.offsetA, cfg.offsetB},
 			gpiocdev.AsInput,
-			gpiocdev.WithPullUp,
 			gpiocdev.WithEventHandler(handler),
 			gpiocdev.WithBothEdges,
 			gpiocdev.WithConsumer("rotary-encoder-"+cfg.label),
@@ -143,37 +142,147 @@ func main() {
 	}
 
 	// Setup GPIO for physical Point button
-	var lastBtnPressTime time.Time
-	const btnDebounceMs = 50 // 50ms debounce even for bounceless button
+	var (
+		lastBtnTriggerTime time.Time
+		lastPinState       int = -1  // Track last known pin state
+		btnDebounceMs          = 300 // 300ms debounce to prevent multiple triggers
+		pointBtnLines      *gpiocdev.Lines
+		recentRisingEdges  []time.Time // Track recent RISING edges to detect button bounce pattern
+		risingEdgesMu      sync.Mutex
+	)
 
 	pointBtnHandler := func(evt gpiocdev.LineEvent) {
-		// Only process falling edge (button press, assuming pull-up)
-		if evt.Type != gpiocdev.LineEventFallingEdge {
-			return
-		}
-
-		// Simple debounce check
 		now := time.Now()
-		if now.Sub(lastBtnPressTime) < time.Millisecond*btnDebounceMs {
+		eventType := "UNKNOWN"
+		if evt.Type == gpiocdev.LineEventRisingEdge {
+			eventType = "RISING"
+		} else if evt.Type == gpiocdev.LineEventFallingEdge {
+			eventType = "FALLING"
+		}
+
+		// Read current pin state for debugging
+		var currentState int = -1
+		if pointBtnLines != nil {
+			values := make([]int, 1)
+			if err := pointBtnLines.Values(values); err == nil {
+				currentState = values[0]
+			}
+		}
+
+		os.Stdout.WriteString(fmt.Sprintf("[BTN-DEBUG] GPIO%d: %s edge at %s (seq: %d, pin: %d)\n",
+			pointBtnOffset, eventType, now.Format("15:04:05.000"), evt.Seqno, currentState))
+
+		// Track FALLING edges if they occur
+		if evt.Type == gpiocdev.LineEventFallingEdge {
+			os.Stdout.WriteString(fmt.Sprintf("[BTN-DEBUG] *** FALLING EDGE DETECTED *** at %s (seq: %d, pin: %d)\n",
+				now.Format("15:04:05.000"), evt.Seqno, currentState))
+			// Verify pin is actually LOW (pressed state)
+			if pointBtnLines != nil {
+				values := make([]int, 1)
+				if err := pointBtnLines.Values(values); err == nil {
+					if values[0] == 0 {
+						os.Stdout.WriteString(fmt.Sprintf("[BTN-DEBUG] FALLING edge confirmed: pin is LOW (button pressed)\n"))
+					} else {
+						os.Stdout.WriteString(fmt.Sprintf("[BTN-DEBUG] FALLING edge WARNING: pin state is %d (expected 0/LOW)\n", values[0]))
+					}
+				} else {
+					os.Stdout.WriteString(fmt.Sprintf("[BTN-DEBUG] FALLING edge: failed to read pin state: %v\n", err))
+				}
+			}
 			return
 		}
-		lastBtnPressTime = now
 
-		// Add point with current encoder coordinates
-		data := getEncoderData()
-		pointsMu.Lock()
-		points = append(points, Point{
-			X: data.X.Distance,
-			Y: data.Y.Distance,
-			Z: data.Z.Distance,
-		})
-		pointsMu.Unlock()
+		// Since FALLING edges aren't being detected, use RISING edge with state tracking
+		// Track pin state changes to verify button was actually pressed (went LOW then HIGH)
+		if evt.Type == gpiocdev.LineEventRisingEdge {
+			risingEdgesMu.Lock()
+			// Clean up old edges (older than 100ms)
+			cutoff := now.Add(-100 * time.Millisecond)
+			validEdges := []time.Time{}
+			for _, t := range recentRisingEdges {
+				if t.After(cutoff) {
+					validEdges = append(validEdges, t)
+				}
+			}
+			validEdges = append(validEdges, now)
+			recentRisingEdges = validEdges
+			edgeCount := len(recentRisingEdges)
+			risingEdgesMu.Unlock()
+
+			timeSinceLastTrigger := now.Sub(lastBtnTriggerTime)
+
+			os.Stdout.WriteString(fmt.Sprintf("[BTN-DEBUG] RISING edge - recent edges: %d, last pin state: %d, current: %d, time since trigger: %v\n",
+				edgeCount, lastPinState, currentState, timeSinceLastTrigger))
+
+			// Require debounce time
+			if timeSinceLastTrigger < time.Duration(btnDebounceMs)*time.Millisecond {
+				os.Stdout.WriteString(fmt.Sprintf("[BTN-DEBUG] Rejected: Debounce (only %v since last trigger, need %dms)\n",
+					timeSinceLastTrigger, btnDebounceMs))
+				lastPinState = currentState
+				return
+			}
+
+			// Verify pin is actually HIGH (released state)
+			if pointBtnLines != nil {
+				values := make([]int, 1)
+				if err := pointBtnLines.Values(values); err == nil {
+					if values[0] == 1 {
+						// Accept if:
+						// 1. Multiple edges in quick succession (bounce pattern), OR
+						// 2. Single edge but last state was LOW (button was pressed), OR
+						// 3. Single edge with enough time passed (fallback)
+						wasLow := lastPinState == 0
+						if edgeCount >= 2 || wasLow || timeSinceLastTrigger > 500*time.Millisecond {
+							lastBtnTriggerTime = now
+							lastPinState = values[0]
+							risingEdgesMu.Lock()
+							recentRisingEdges = []time.Time{} // Clear after successful trigger
+							risingEdgesMu.Unlock()
+
+							reason := "multiple edges"
+							if edgeCount < 2 {
+								if wasLow {
+									reason = "pin was LOW before"
+								} else {
+									reason = "enough time passed"
+								}
+							}
+							os.Stdout.WriteString(fmt.Sprintf("[BTN-DEBUG] *** POINT ADDED *** (pin HIGH, %d edges, %s)\n", edgeCount, reason))
+
+							// Add point with current encoder coordinates
+							data := getEncoderData()
+							pointsMu.Lock()
+							points = append(points, Point{
+								X: data.X.Distance,
+								Y: data.Y.Distance,
+								Z: data.Z.Distance,
+							})
+							pointCount := len(points)
+							pointsMu.Unlock()
+
+							os.Stdout.WriteString(fmt.Sprintf("[BTN-DEBUG] Total points now: %d\n", pointCount))
+						} else {
+							os.Stdout.WriteString(fmt.Sprintf("[BTN-DEBUG] Rejected: Single edge, pin wasn't LOW, not enough time\n"))
+							lastPinState = values[0]
+						}
+					} else {
+						os.Stdout.WriteString(fmt.Sprintf("[BTN-DEBUG] Rejected: Pin state is %d (expected 1/HIGH)\n", values[0]))
+						lastPinState = values[0]
+					}
+				} else {
+					os.Stdout.WriteString(fmt.Sprintf("[BTN-DEBUG] Rejected: Failed to read pin state: %v\n", err))
+				}
+			}
+		} else {
+			// Update pin state for non-RISING edges
+			lastPinState = currentState
+		}
 	}
 
-	_, err := gpiocdev.RequestLines(chipName,
+	var err error
+	pointBtnLines, err = gpiocdev.RequestLines(chipName,
 		[]int{pointBtnOffset},
 		gpiocdev.AsInput,
-		gpiocdev.WithPullUp,
 		gpiocdev.WithEventHandler(pointBtnHandler),
 		gpiocdev.WithBothEdges,
 		gpiocdev.WithConsumer("point-button"),
@@ -522,6 +631,14 @@ func Page(data EncoderData, unit string) g.Node {
 					font-family: 'Orbitron', monospace;
 					font-weight: 700;
 				}
+				.encoder-gpio-pins {
+					font-size: 0.75rem;
+					color: #009922;
+					margin-top: 0.25rem;
+					text-shadow: 0 0 3px #009922;
+					font-family: 'Courier New', monospace;
+					font-weight: 400;
+				}
 				.encoder-distance {
 					font-size: 2rem;
 					font-weight: 700;
@@ -767,6 +884,19 @@ func Page(data EncoderData, unit string) g.Node {
 	)
 }
 
+func getGPIOPins(label string) (int, int) {
+	switch label {
+	case "X":
+		return 17, 18
+	case "Y":
+		return 19, 20
+	case "Z":
+		return 21, 22
+	default:
+		return 0, 0
+	}
+}
+
 func EncoderFragment(data EncoderData, unit string) g.Node {
 	return Div(
 		hx.Get("/api/encoder/htmx"),
@@ -900,6 +1030,7 @@ func encoderDisplay(label string, values EncoderValues, selectedUnit string) g.N
 	if selectedUnit != "ft" {
 		unitLabel = Span(Class("encoder-unit-large"), g.Text(" "+selectedLabel))
 	}
+	pinA, pinB := getGPIOPins(label)
 	return Div(
 		Class("encoder-card"),
 		Div(
@@ -917,15 +1048,17 @@ func encoderDisplay(label string, values EncoderValues, selectedUnit string) g.N
 				Class("encoder-detail-item"),
 				g.Textf("%d", values.Count),
 				Span(Class("encoder-unit-small"), g.Text(" counts")),
-			),
-			Span(
-				Class("encoder-detail-item"),
+				g.Text(" | "),
 				g.Textf("%.1f", values.RPM),
 				Span(Class("encoder-unit-small"), g.Text(" rpm")),
 			),
 			Span(
 				Class("encoder-detail-item encoder-other-units"),
 				g.Text(strings.Join(otherUnits, " | ")),
+			),
+			Span(
+				Class("encoder-detail-item encoder-gpio-pins"),
+				g.Textf("GPIO%d/%d", pinA, pinB),
 			),
 		),
 	)
