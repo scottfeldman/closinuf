@@ -1,1 +1,3 @@
 fp-info-cache
+*.FCBak
+.DS_Store
