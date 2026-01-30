@@ -37,7 +37,7 @@ closinuf is a web-based application that tracks 3D positions using three rotary 
 
 1. **Clone the repository**:
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/scottfeldman/closinuf.git
    cd closinuf
    ```
 
