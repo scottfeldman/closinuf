@@ -67,12 +67,12 @@ func main() {
 	const (
 		chipName = "gpiochip0"
 		// GPIO pins for each encoder: [A, B]
-		xOffsetA       = 17 // GPIO17
-		xOffsetB       = 18 // GPIO18
-		yOffsetA       = 19 // GPIO19
-		yOffsetB       = 20 // GPIO20
-		zOffsetA       = 21 // GPIO21
-		zOffsetB       = 22 // GPIO22
+		xOffsetA       = 2  // GPIO2
+		xOffsetB       = 3  // GPIO3
+		yOffsetA       = 5  // GPIO5
+		yOffsetB       = 6  // GPIO6
+		zOffsetA       = 17 // GPIO17
+		zOffsetB       = 27 // GPIO27
 		pointBtnOffset = 23 // GPIO23 - physical button for adding points
 	)
 
@@ -798,11 +798,11 @@ func Page(data EncoderData, unit string) g.Node {
 func getGPIOPins(label string) (int, int) {
 	switch label {
 	case "X":
-		return 17, 18
+		return 2, 3
 	case "Y":
-		return 19, 20
+		return 5, 6
 	case "Z":
-		return 21, 22
+		return 17, 27
 	default:
 		return 0, 0
 	}
