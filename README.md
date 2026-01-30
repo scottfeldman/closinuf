@@ -43,7 +43,6 @@ closinuf is a web-based application that tracks 3D positions using three rotary 
 
 2. **Install dependencies**:
    ```bash
-   cd site
    go mod download
    ```
 
