@@ -4,11 +4,11 @@
 
 ## Overview
 
-closinuf is a web-based application that tracks 3D positions using three rotary encoders (X, Y, Z axes) connected to a Raspberry Pi via GPIO. It provides real-time position monitoring, point capture, and export functionality for use with CAD software like FreeCAD.
+closinuf is a web-based application that tracks 3D positions using four rotary encoders (X, X', Y, Z axes) connected to a Raspberry Pi via GPIO. It provides real-time position monitoring, point capture, and export functionality for use with CAD software like FreeCAD.
 
 ## Features
 
-- **Real-time Position Tracking**: Monitor X, Y, Z coordinates with live updates (200ms refresh rate)
+- **Real-time Position Tracking**: Monitor X, X', Y, Z coordinates with live updates (200ms refresh rate)
 - **Multiple Unit Support**: Display distances in millimeters (mm), meters (m), inches (in), or feet/inches (ft/in)
 - **Point Capture**: Save 3D coordinates at any moment via web interface or physical button
 - **RPM Monitoring**: Track rotation speed for each encoder axis
@@ -20,12 +20,14 @@ closinuf is a web-based application that tracks 3D positions using three rotary 
 ## Hardware Requirements
 
 - Raspberry Pi (with GPIO access)
-- 3x Rotary Encoders (600 PPR recommended)
+- 4x Rotary Encoders (600 PPR recommended)
   - X-axis encoder: GPIO pins 2 & 3
-  - Y-axis encoder: GPIO pins 5 & 6
-  - Z-axis encoder: GPIO pins 17 & 27
-- Optional: Physical button for point capture (GPIO pin 23)
+  - X'-axis encoder: GPIO pins 22 & 27
+  - Y-axis encoder: GPIO pins 9 & 10
+  - Z-axis encoder: GPIO pins 5 & 11
+- Optional: Physical button for point capture (GPIO pin 17, NO contact)
 - Encoder wheels: 50mm diameter (configurable in code)
+- **Note**: All GPIO lines (encoder A/B pins and button) use external 4.7K pull-up resistors
 
 ## Software Requirements
 
@@ -65,7 +67,7 @@ closinuf is a web-based application that tracks 3D positions using three rotary 
 
 ### Web Interface
 
-- **View Position**: The main page displays real-time X, Y, Z coordinates
+- **View Position**: The main page displays real-time X, X', Y, Z coordinates
 - **Change Units**: Click the "Units" button to cycle through mm → m → in → ft
 - **Capture Point**: Click "Capture Point" to save current coordinates
 - **Zero Counts**: Click "Zero All Counts" to reset all encoders and clear points
@@ -73,9 +75,10 @@ closinuf is a web-based application that tracks 3D positions using three rotary 
 
 ### Physical Button
 
-If a button is connected to GPIO 23:
+If a button is connected to GPIO 17 (NO contact):
 - Press the button to capture a point at the current position
 - Button includes debouncing to prevent duplicate captures
+- Button uses external 4.7K pull-up resistor
 
 ### API Endpoints
 

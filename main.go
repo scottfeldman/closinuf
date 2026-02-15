@@ -36,9 +36,10 @@ const (
 )
 
 type EncoderData struct {
-	X EncoderValues `json:"x"`
-	Y EncoderValues `json:"y"`
-	Z EncoderValues `json:"z"`
+	X  EncoderValues `json:"x"`
+	Xp EncoderValues `json:"x'"`
+	Y  EncoderValues `json:"y"`
+	Z  EncoderValues `json:"z"`
 }
 
 type EncoderValues struct {
@@ -55,8 +56,8 @@ type Point struct {
 }
 
 var (
-	encoders           [3]*Encoder // X=0, Y=1, Z=2
-	points             []Point     // accumulated points
+	encoders           [4]*Encoder // X=0, X'=1, Y=2, Z=3
+	points             []Point      // accumulated points
 	pointsMu           sync.RWMutex
 	lastPointAddedTime time.Time
 	btnEventMu         sync.Mutex
@@ -67,13 +68,16 @@ func main() {
 	const (
 		chipName = "gpiochip0"
 		// GPIO pins for each encoder: [A, B]
+		// All GPIO lines are pulled up with 4.7K resistor
 		xOffsetA       = 2  // GPIO2
 		xOffsetB       = 3  // GPIO3
-		yOffsetA       = 5  // GPIO5
-		yOffsetB       = 6  // GPIO6
-		zOffsetA       = 17 // GPIO17
-		zOffsetB       = 27 // GPIO27
-		pointBtnOffset = 23 // GPIO23 - physical button for adding points
+		xpOffsetA      = 22 // GPIO22
+		xpOffsetB      = 27 // GPIO27
+		yOffsetA       = 9  // GPIO9
+		yOffsetB       = 10 // GPIO10
+		zOffsetA       = 5  // GPIO5
+		zOffsetB       = 11 // GPIO11
+		pointBtnOffset = 17 // GPIO17 - physical button for adding points (NO contact)
 	)
 
 	// Quadrature table: +1 = CW, -1 = CCW, 0 = no/invalid change
@@ -85,9 +89,10 @@ func main() {
 	}
 
 	// Initialize encoders
-	encoders[0] = &Encoder{label: "X"} // X encoder
-	encoders[1] = &Encoder{label: "Y"} // Y encoder
-	encoders[2] = &Encoder{label: "Z"} // Z encoder
+	encoders[0] = &Encoder{label: "X"}  // X encoder
+	encoders[1] = &Encoder{label: "X'"} // X' encoder
+	encoders[2] = &Encoder{label: "Y"}  // Y encoder
+	encoders[3] = &Encoder{label: "Z"}  // Z encoder
 
 	// Initialize GPIO for each encoder
 	encoderConfigs := []struct {
@@ -97,8 +102,9 @@ func main() {
 		index   int
 	}{
 		{"X", xOffsetA, xOffsetB, 0},
-		{"Y", yOffsetA, yOffsetB, 1},
-		{"Z", zOffsetA, zOffsetB, 2},
+		{"X'", xpOffsetA, xpOffsetB, 1},
+		{"Y", yOffsetA, yOffsetB, 2},
+		{"Z", zOffsetA, zOffsetB, 3},
 	}
 
 	for _, cfg := range encoderConfigs {
@@ -151,7 +157,7 @@ func main() {
 		btnEventMu.Lock()
 		defer btnEventMu.Unlock()
 
-		// Button has external pullup: HIGH when not pressed, LOW when pressed
+		// Button has external 4.7K pullup: HIGH when not pressed, LOW when pressed (NO contact)
 		if evt.Type == gpiocdev.LineEventFallingEdge {
 			// State-based debouncing: only trigger once per press-release cycle
 			if btnPressHandled {
@@ -433,8 +439,10 @@ func getEncoderData() EncoderData {
 		case 0:
 			data.X = values
 		case 1:
-			data.Y = values
+			data.Xp = values
 		case 2:
+			data.Y = values
+		case 3:
 			data.Z = values
 		}
 	}
@@ -799,10 +807,12 @@ func getGPIOPins(label string) (int, int) {
 	switch label {
 	case "X":
 		return 2, 3
+	case "X'":
+		return 22, 27
 	case "Y":
-		return 5, 6
+		return 9, 10
 	case "Z":
-		return 17, 27
+		return 5, 11
 	default:
 		return 0, 0
 	}
@@ -818,6 +828,7 @@ func EncoderFragment(data EncoderData, unit string) g.Node {
 		ID("encoder-data"),
 		Div(Class("encoder-display"),
 			encoderDisplay("X", data.X, unit),
+			encoderDisplay("X'", data.Xp, unit),
 			encoderDisplay("Y", data.Y, unit),
 			encoderDisplay("Z", data.Z, unit),
 		),
