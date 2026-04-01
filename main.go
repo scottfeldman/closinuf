@@ -12,9 +12,9 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
-	g "github.com/maragudk/gomponents"
-	hx "github.com/maragudk/gomponents-htmx"
-	. "github.com/maragudk/gomponents/html"
+	g "maragu.dev/gomponents"
+	hx "maragu.dev/gomponents"
+	. "maragu.dev/gomponents"
 	"github.com/warthog618/go-gpiocdev"
 )
 
