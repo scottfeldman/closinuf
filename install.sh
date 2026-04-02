@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install closinuf as a systemd service and open Chromium on :3000 at desktop login.
+# Install closinuf as a systemd service and open the default browser on :3000 at desktop login.
 # Run from the repo root: sudo ./install.sh
 set -euo pipefail
 
@@ -20,9 +20,9 @@ if [[ -z "${USER_HOME}" || ! -d "${USER_HOME}" ]]; then
 	exit 1
 fi
 
-if ! command -v go >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1 || ! command -v chromium >/dev/null 2>&1; then
+if ! command -v go >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
 	apt-get update -qq
-	apt-get install -y golang-go curl chromium
+	apt-get install -y golang-go curl
 fi
 
 echo "Building closinuf..."
@@ -31,10 +31,10 @@ chown "${APP_USER}:${APP_USER}" "${INSTALL_DIR}/closinuf"
 
 cat << 'BROWSER_SCRIPT' > /usr/local/bin/closinuf-browser.sh
 #!/usr/bin/env sh
-# Wait for the local app, then open Chromium (autostart / desktop session).
+# Wait for the local app, then open the desktop default browser (autostart / desktop session).
 export DISPLAY="${DISPLAY:-:0}"
 until curl -sf "http://127.0.0.1:3000" >/dev/null 2>&1; do sleep 1; done
-exec chromium --kiosk "http://127.0.0.1:3000"
+exec xdg-open "http://127.0.0.1:3000"
 BROWSER_SCRIPT
 chmod 0755 /usr/local/bin/closinuf-browser.sh
 
@@ -66,7 +66,7 @@ sudo -u "${APP_USER}" mkdir -p "${USER_HOME}/.config/autostart"
 cat << 'DESKTOP' > "${USER_HOME}/.config/autostart/closinuf-browser.desktop"
 [Desktop Entry]
 Type=Application
-Name=Closinuf (Chromium)
+Name=Closinuf (browser)
 Exec=/usr/local/bin/closinuf-browser.sh
 X-GNOME-Autostart-enabled=true
 DESKTOP
