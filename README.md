@@ -1,125 +1,83 @@
 # closinuf
 
-**3D Point Catcher** - A real-time 3D coordinate tracking system using rotary encoders on Raspberry Pi.
+**3D point catcher** — live 3D coordinates from four quadrature encoders on a Raspberry Pi, with a small web UI, foot‑switch capture, and FreeCAD‑friendly export.
 
-## Overview
+## What it does
 
-closinuf is a web-based application that tracks 3D positions using four rotary encoders (X, X', Y, Z axes) connected to a Raspberry Pi via GPIO. It provides real-time position monitoring, point capture, and export functionality for use with CAD software like FreeCAD.
+- Tracks **X**, **X'**, **Y**, **Z** from dedicated rotary encoders.  
+- **Capture Point** in the browser or a **GPIO foot switch** appends the current **(X, Y, Z)** to a list (mm internally).
+- **Save** downloads an **ASC** point cloud file, which can be imported into FreeCAD as a point cloud. 
+- **Units** cycles mm → m → in → ft. **Zero** clears counts and points.
+- Optional **short beep** on capture if speakers are available.
 
-## Features
+## Hardware
 
-- **Real-time Position Tracking**: Monitor X, X', Y, Z coordinates with live updates (200ms refresh rate)
-- **Multiple Unit Support**: Display distances in millimeters (mm), meters (m), inches (in), or feet/inches (ft/in)
-- **Point Capture**: Save 3D coordinates at any moment via web interface or physical button
-- **RPM Monitoring**: Track rotation speed for each encoder axis
-- **FreeCAD Export**: Save captured points in ASC format compatible with FreeCAD point clouds
-- **Modern Web Interface**: Clean, terminal-style UI with HTMX for dynamic updates
-- **Physical Button Support**: Optional GPIO-connected button for hands-free point capture
-- **Zero/Reset Function**: Reset all encoder counts and clear captured points
+| Axis | GPIO (A / B) |
+|------|----------------|
+| X    | 2 / 3          |
+| X′   | 22 / 27        |
+| Y    | 9 / 10         |
+| Z    | 5 / 11         |
 
-## Hardware Requirements
+- Encoders: **600 PPR** quadrature (2400 counts/rev) and **50 mm** wheel diameter match the defaults in `main.go`; change constants there if your hardware differs.  Code assumes external 4.7K pull-up resistors for encoder inputs.
+- **Foot / capture switch**: GPIO **17**, normally‑open, pulled **high** (e.g. 4.7 kΩ to 3.3 V).
 
-- Raspberry Pi (with GPIO access)
-- 4x Rotary Encoders (600 PPR recommended)
-  - X-axis encoder: GPIO pins 2 & 3
-  - X'-axis encoder: GPIO pins 22 & 27
-  - Y-axis encoder: GPIO pins 9 & 10
-  - Z-axis encoder: GPIO pins 5 & 11
-- Optional: Physical button for point capture (GPIO pin 17, NO contact)
-- Encoder wheels: 50mm diameter (configurable in code)
-- **Note**: All GPIO lines (encoder A/B pins and button) use external 4.7K pull-up resistors
+## Install on the Pi (`install.sh`)
 
-## Software Requirements
+1. On the Pi, clone the repository and enter the project directory:
 
-- Go 1.25.3 or later
-- Raspberry Pi OS (or compatible Linux distribution)
-- GPIO access permissions (user should be in `gpio` group or run with appropriate permissions)
-
-## Installation
-
-1. **Clone the repository**:
    ```bash
    git clone https://github.com/scottfeldman/closinuf.git
    cd closinuf
    ```
 
-2. **Install dependencies**:
+2. Run the install script as root:
+
    ```bash
-   go mod download
+   sudo ./install.sh
    ```
 
-3. **Build the application**:
-   ```bash
-   go build -o closinuf main.go
-   ```
+What the script does:
 
-4. **Run the application**:
-   ```bash
-   sudo ./closinuf
-   ```
-   
-   Note: `sudo` may be required for GPIO access depending on your system configuration.
+- Installs **`golang-go`** via `apt` if `go` is missing.
+- Builds **`./closinuf`** in the repo.
+- Installs **closinuf** **systemd** services: **`closinuf.service`** (app on :3000), **`closinuf-browser.service`** (open Chromium after boot)
 
-5. **Access the web interface**:
-   Open your browser and navigate to `http://<raspberry-pi-ip>:3000`
+Useful commands:
 
-## Usage
-
-### Web Interface
-
-- **View Position**: The main page displays real-time X, X', Y, Z coordinates
-- **Change Units**: Click the "Units" button to cycle through mm → m → in → ft
-- **Capture Point**: Click "Capture Point" to save current coordinates
-- **Zero Counts**: Click "Zero All Counts" to reset all encoders and clear points
-- **Save Points**: Enter a filename and click "Save" to download points as an ASC file
-
-### Physical Button
-
-If a button is connected to GPIO 17 (NO contact):
-- Press the button to capture a point at the current position
-- Button includes debouncing to prevent duplicate captures
-- Button uses external 4.7K pull-up resistor
-
-### API Endpoints
-
-- `GET /` - Main web interface
-- `GET /api/encoder` - Get encoder data as JSON
-- `GET /api/encoder/htmx` - Get encoder display fragment (HTML)
-- `GET /api/units/cycle` - Cycle through unit systems
-- `POST /api/encoder/zero` - Reset all encoder counts and clear points
-- `POST /api/points/add` - Add a point at current coordinates
-- `GET /api/points/count` - Get number of captured points
-- `GET /api/points/save?filename=<name>` - Download points as ASC file
-
-## File Format
-
-Points are saved in ASC (ASCII) format compatible with FreeCAD:
-```
-X Y Z
-X Y Z
-...
+```bash
+systemctl status closinuf closinuf-browser
+journalctl -u closinuf -f
 ```
 
-Each line contains space-separated floating-point coordinates in millimeters.
+A reboot is recommended so graphical login and the browser unit start in a clean order. For GPIO, ensure the service user can use **`/dev/gpiochip*`** (e.g. `gpio` group or equivalent on your image).
 
-## Configuration
+**Touch keyboard:** fullscreen Chromium can block some on‑screen keyboards; if the filename field stays hidden behind the keyboard, try launching the browser **maximized** instead of fullscreen (edit the `chromium` line in `/usr/local/bin/closinuf-browser.sh`). The UI adds extra **bottom padding** so you can scroll content above the keyboard.
 
-Key constants in `main.go`:
-- `countsPerRev`: 2400 (600 PPR × 4 for quadrature encoding)
-- `wheelDiameter`: 50.0 mm
-- GPIO pin assignments (see Hardware Requirements section)
+**Capture beep:** install **`alsa-utils`** (`aplay`) or ensure **`paplay`** works so the Pi can play the short tone on capture.
 
-## Technical Details
+## Manual run (development)
 
-- **Encoder Resolution**: 600 PPR (2400 counts per revolution with quadrature)
-- **Update Rate**: 200ms for web display, 100ms for RPM calculation
-- **Web Framework**: Fiber (Go)
-- **Frontend**: HTMX for dynamic updates
-- **GPIO Library**: go-gpiocdev
+```bash
+git clone https://github.com/scottfeldman/closinuf.git
+cd closinuf
+go build -o closinuf .
+./closinuf
+```
+
+Open `http://127.0.0.1:3000`. Use `sudo` only if your user cannot access GPIO.
+
+## ASC export
+
+One point per line: `X Y Z` in **millimeters** (space‑separated), suitable for FreeCAD point cloud import.
+
+## Stack
+
+Fiber, HTMX, gomponents, **go-gpiocdev** (`gpiochip` character device).
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+MIT — see [LICENSE](LICENSE).
 
 ## Author
 
