@@ -1102,7 +1102,7 @@ func encoderDisplayXMerged(x, xp EncoderValues, selectedUnit string) g.Node {
 		),
 		Div(
 			Class("encoder-label"),
-			g.Text("Δ"),
+			g.Text("Δ (X′−X)"),
 		),
 		Div(
 			Class(deltaCardClass),
