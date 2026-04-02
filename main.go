@@ -191,7 +191,7 @@ func main() {
 
 			// Update timestamp when point is actually added
 			lastPointAddedTime = now
-			playCaptureBeep()
+			playBeep()
 		} else if evt.Type == gpiocdev.LineEventRisingEdge {
 			// On release, reset the handled flag so next press can be processed
 			if btnPressHandled {
@@ -295,6 +295,7 @@ func main() {
 
 		// Redirect to page with new unit parameter
 		c.Set("HX-Redirect", "/?unit="+nextUnit)
+		playBeep()
 		return c.SendStatus(200)
 	})
 
@@ -310,6 +311,7 @@ func main() {
 		pointsMu.Lock()
 		points = []Point{}
 		pointsMu.Unlock()
+		playBeep()
 		return c.SendStatus(200)
 	})
 
@@ -323,7 +325,7 @@ func main() {
 			Z: data.Z.Distance,
 		})
 		pointsMu.Unlock()
-		playCaptureBeep()
+		playBeep()
 		return c.SendStatus(200)
 	})
 
@@ -395,6 +397,7 @@ func main() {
 
 		pointsMu.Unlock()
 
+		playBeep()
 		// Set headers for file download
 		c.Set("Content-Type", "text/plain")
 		c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
@@ -418,8 +421,8 @@ func main() {
 	os.Stdout.WriteString("\nShutting down...\n")
 }
 
-// playCaptureBeep plays a short tone on the default audio output (non-blocking).
-func playCaptureBeep() {
+// playBeep plays a short tone on the default audio output (non-blocking).
+func playBeep() {
 	go func() {
 		f, err := os.CreateTemp("", "closinuf-beep-*.wav")
 		if err != nil {
@@ -589,7 +592,7 @@ func Page(data EncoderData, unit string) g.Node {
 					padding-bottom: clamp(10rem, 48vh, 440px);
 					background: #0a0a0a;
 					color: #00ff41;
-					text-shadow: 0 0 5px #00ff41, 0 0 10px #00ff41;
+					text-shadow: 0 0 2px #00ff41, 0 0 4px rgba(0, 255, 65, 0.35);
 				}
 				.container {
 					position: relative;
@@ -604,7 +607,7 @@ func Page(data EncoderData, unit string) g.Node {
 				h1 {
 					margin-top: 0;
 					color: #00ff41;
-					text-shadow: 0 0 10px #00ff41, 0 0 20px #00ff41;
+					text-shadow: 0 0 2px #00ff41, 0 0 6px rgba(0, 255, 65, 0.4);
 					font-family: 'Orbitron', monospace;
 					font-weight: 700;
 				}
@@ -630,7 +633,7 @@ func Page(data EncoderData, unit string) g.Node {
 					color: #00ff41;
 					font-size: 1.2rem;
 					margin-bottom: 0.5rem;
-					text-shadow: 0 0 8px #00ff41, 0 0 15px #00ff41;
+					text-shadow: 0 0 2px #00ff41, 0 0 5px rgba(0, 255, 65, 0.35);
 					font-family: 'Orbitron', monospace;
 					font-weight: 700;
 				}
@@ -638,7 +641,7 @@ func Page(data EncoderData, unit string) g.Node {
 					font-size: 0.75rem;
 					color: #009922;
 					margin-top: 0.25rem;
-					text-shadow: 0 0 3px #009922;
+					text-shadow: 0 0 1px #009922;
 					font-family: 'Courier New', monospace;
 					font-weight: 400;
 				}
@@ -649,12 +652,12 @@ func Page(data EncoderData, unit string) g.Node {
 					line-height: 1.2;
 					margin-bottom: 0.5rem;
 					font-variant-numeric: tabular-nums;
-					text-shadow: 0 0 10px #00ff41, 0 0 20px #00ff41;
+					text-shadow: 0 0 2px #00ff41, 0 0 6px rgba(0, 255, 65, 0.4);
 					font-family: 'Courier New', monospace;
 				}
 				.encoder-delta {
-					font-size: 1.15rem;
-					font-weight: 600;
+					font-size: 2rem;
+					font-weight: 700;
 					line-height: 1.2;
 					margin-bottom: 0.5rem;
 					font-variant-numeric: tabular-nums;
@@ -662,22 +665,26 @@ func Page(data EncoderData, unit string) g.Node {
 				}
 				.encoder-delta-zero {
 					color: #00ff41;
-					text-shadow: 0 0 6px #00ff41, 0 0 12px #00ff41;
+					text-shadow: 0 0 2px #00ff41, 0 0 5px rgba(0, 255, 65, 0.35);
 				}
 				.encoder-delta-nonzero {
 					color: #ff4444;
-					text-shadow: 0 0 8px #ff4444, 0 0 16px #ff4444;
+					text-shadow: 0 0 2px #ff4444, 0 0 5px rgba(255, 68, 68, 0.45);
+				}
+				.encoder-delta-nonzero .encoder-unit-large {
+					color: #ff4444;
+					text-shadow: 0 0 2px #ff4444, 0 0 5px rgba(255, 68, 68, 0.45);
 				}
 				.encoder-delta .encoder-unit-large {
-					font-size: 1rem;
-					margin-left: 0.2rem;
+					font-size: 1.5rem;
+					margin-left: 0.25rem;
 				}
 				.encoder-unit-large {
 					font-size: 1.5rem;
 					color: #00ff41;
 					margin-left: 0.25rem;
 					font-weight: 400;
-					text-shadow: 0 0 8px #00ff41;
+					text-shadow: 0 0 2px #00ff41;
 				}
 				.encoder-details {
 					display: flex;
@@ -685,7 +692,7 @@ func Page(data EncoderData, unit string) g.Node {
 					gap: 0.25rem;
 					font-size: 0.85rem;
 					color: #00cc33;
-					text-shadow: 0 0 5px #00cc33;
+					text-shadow: 0 0 1px #00cc33;
 				}
 				.encoder-detail-item {
 					font-variant-numeric: tabular-nums;
@@ -693,13 +700,13 @@ func Page(data EncoderData, unit string) g.Node {
 				.encoder-unit-small {
 					color: #00cc33;
 					margin-left: 0.15rem;
-					text-shadow: 0 0 3px #00cc33;
+					text-shadow: 0 0 1px #00cc33;
 				}
 				.encoder-other-units {
 					font-size: 0.75rem;
 					color: #009922;
 					margin-top: 0.25rem;
-					text-shadow: 0 0 3px #009922;
+					text-shadow: 0 0 1px #009922;
 				}
 				.units-button, .zero-button, .point-button, .save-button {
 					background: #0a0a0a;
@@ -712,7 +719,7 @@ func Page(data EncoderData, unit string) g.Node {
 					cursor: pointer;
 					transition: all 0.15s ease;
 					font-family: 'Courier New', monospace;
-					text-shadow: 0 0 5px #00ff41;
+					text-shadow: 0 0 2px #00ff41;
 					box-shadow: 0 0 10px rgba(0, 255, 65, 0.3);
 					position: relative;
 					-webkit-tap-highlight-color: transparent;
@@ -720,12 +727,12 @@ func Page(data EncoderData, unit string) g.Node {
 				.units-button:hover, .zero-button:hover, .point-button:hover, .save-button:hover {
 					background: rgba(0, 255, 65, 0.1);
 					box-shadow: 0 0 15px rgba(0, 255, 65, 0.5);
-					text-shadow: 0 0 8px #00ff41, 0 0 15px #00ff41;
+					text-shadow: 0 0 2px #00ff41, 0 0 5px rgba(0, 255, 65, 0.35);
 				}
 				.units-button:active, .zero-button:active, .point-button:active, .save-button:active {
 					background: rgba(0, 255, 65, 0.25);
 					box-shadow: 0 0 25px rgba(0, 255, 65, 0.8), 0 0 40px rgba(0, 255, 65, 0.4);
-					text-shadow: 0 0 12px #00ff41, 0 0 20px #00ff41;
+					text-shadow: 0 0 3px #00ff41, 0 0 7px rgba(0, 255, 65, 0.4);
 					transform: scale(0.98);
 					border-color: #00ff88;
 				}
@@ -746,18 +753,18 @@ func Page(data EncoderData, unit string) g.Node {
 					background: rgba(255, 200, 0, 0.1);
 					border-color: #ffc800;
 					color: #ffc800;
-					text-shadow: 0 0 5px #ffc800;
+					text-shadow: 0 0 2px #ffc800;
 					box-shadow: 0 0 10px rgba(255, 200, 0, 0.3);
 				}
 				.save-button:hover {
 					background: rgba(255, 200, 0, 0.2);
 					box-shadow: 0 0 15px rgba(255, 200, 0, 0.5);
-					text-shadow: 0 0 8px #ffc800, 0 0 15px #ffc800;
+					text-shadow: 0 0 2px #ffc800, 0 0 5px rgba(255, 200, 0, 0.45);
 				}
 				.save-button:active {
 					background: rgba(255, 200, 0, 0.3);
 					box-shadow: 0 0 25px rgba(255, 200, 0, 0.8), 0 0 40px rgba(255, 200, 0, 0.4);
-					text-shadow: 0 0 12px #ffc800, 0 0 20px #ffc800;
+					text-shadow: 0 0 3px #ffc800, 0 0 7px rgba(255, 200, 0, 0.45);
 					border-color: #ffd700;
 				}
 				.button-container {
@@ -778,7 +785,7 @@ func Page(data EncoderData, unit string) g.Node {
 					border-radius: 6px;
 					border: 1px solid #00ff41;
 					box-shadow: 0 0 8px rgba(0, 255, 65, 0.2);
-					text-shadow: 0 0 5px #00ff41;
+					text-shadow: 0 0 2px #00ff41;
 				}
 				.filename-input {
 					padding: 0.75rem 1rem;
@@ -789,7 +796,7 @@ func Page(data EncoderData, unit string) g.Node {
 					background: #0a0a0a;
 					color: #00ff41;
 					font-family: 'Courier New', monospace;
-					text-shadow: 0 0 5px #00ff41;
+					text-shadow: 0 0 2px #00ff41;
 					transition: all 0.2s;
 					box-shadow: 0 0 8px rgba(0, 255, 65, 0.2);
 				}
@@ -797,11 +804,11 @@ func Page(data EncoderData, unit string) g.Node {
 					outline: none;
 					border-color: #00ff41;
 					box-shadow: 0 0 15px rgba(0, 255, 65, 0.5);
-					text-shadow: 0 0 8px #00ff41;
+					text-shadow: 0 0 3px #00ff41;
 				}
 				.filename-input::placeholder {
 					color: #009922;
-					text-shadow: 0 0 3px #009922;
+					text-shadow: 0 0 1px #009922;
 				}
 				.save-group {
 					display: flex;
@@ -823,7 +830,7 @@ func Page(data EncoderData, unit string) g.Node {
 					z-index: 1000;
 					box-shadow: 0 0 20px rgba(255, 0, 0, 0.8), inset 0 0 10px rgba(255, 0, 0, 0.2);
 					animation: fadeOut 0.5s ease-out 5s forwards;
-					text-shadow: 0 0 8px #ff0000, 0 0 15px #ff0000;
+					text-shadow: 0 0 2px #ff0000, 0 0 5px rgba(255, 0, 0, 0.45);
 					font-weight: bold;
 				}
 				@keyframes fadeOut {
@@ -1094,8 +1101,11 @@ func encoderDisplayXMerged(x, xp EncoderValues, selectedUnit string) g.Node {
 			mainUnitLabel,
 		),
 		Div(
+			Class("encoder-label"),
+			g.Text("Δ"),
+		),
+		Div(
 			Class(deltaCardClass),
-			g.Text("Δ (X′−X): "),
 			g.Text(deltaText),
 			deltaUnitLabel,
 		),
