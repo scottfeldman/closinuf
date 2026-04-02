@@ -652,6 +652,26 @@ func Page(data EncoderData, unit string) g.Node {
 					text-shadow: 0 0 10px #00ff41, 0 0 20px #00ff41;
 					font-family: 'Courier New', monospace;
 				}
+				.encoder-delta {
+					font-size: 1.15rem;
+					font-weight: 600;
+					line-height: 1.2;
+					margin-bottom: 0.5rem;
+					font-variant-numeric: tabular-nums;
+					font-family: 'Courier New', monospace;
+				}
+				.encoder-delta-zero {
+					color: #00ff41;
+					text-shadow: 0 0 6px #00ff41, 0 0 12px #00ff41;
+				}
+				.encoder-delta-nonzero {
+					color: #ff4444;
+					text-shadow: 0 0 8px #ff4444, 0 0 16px #ff4444;
+				}
+				.encoder-delta .encoder-unit-large {
+					font-size: 1rem;
+					margin-left: 0.2rem;
+				}
 				.encoder-unit-large {
 					font-size: 1.5rem;
 					color: #00ff41;
@@ -911,8 +931,7 @@ func EncoderFragment(data EncoderData, unit string) g.Node {
 		hx.Target("this"),
 		ID("encoder-data"),
 		Div(Class("encoder-display"),
-			encoderDisplay("X", data.X, unit),
-			encoderDisplay("X'", data.Xp, unit),
+			encoderDisplayXMerged(data.X, data.Xp, unit),
 			encoderDisplay("Y", data.Y, unit),
 			encoderDisplay("Z", data.Z, unit),
 		),
@@ -980,14 +999,12 @@ func formatFeetInchesFraction(mm float64) string {
 	return fmt.Sprintf("%s%d/%d\"", sign, num, den)
 }
 
-func encoderDisplay(label string, values EncoderValues, selectedUnit string) g.Node {
-	// Convert to all units
-	distanceMM := values.Distance
+// distanceReadout formats distanceMM for the selected unit (primary display, unit suffix, other units line).
+func distanceReadout(distanceMM float64, selectedUnit string) (selectedDisplay string, unitLabel g.Node, otherUnitsLine string) {
 	distanceM := distanceMM / 1000.0
 	distanceInches := distanceMM / 25.4
 	distanceFeetInches := formatFeetInchesFraction(distanceMM)
 
-	// Get selected unit value and label
 	var selectedValue float64
 	var selectedLabel string
 	switch selectedUnit {
@@ -998,15 +1015,13 @@ func encoderDisplay(label string, values EncoderValues, selectedUnit string) g.N
 		selectedValue = distanceInches
 		selectedLabel = "in"
 	case "ft":
-		selectedValue = 0 // Not used, we use formatted string
+		selectedValue = 0
 		selectedLabel = "ft"
-	default: // mm
+	default:
 		selectedValue = distanceMM
 		selectedLabel = "mm"
 	}
 
-	// Format selected value
-	var selectedDisplay string
 	if selectedUnit == "ft" {
 		selectedDisplay = distanceFeetInches
 	} else if selectedUnit == "m" {
@@ -1017,7 +1032,6 @@ func encoderDisplay(label string, values EncoderValues, selectedUnit string) g.N
 		selectedDisplay = fmt.Sprintf("%.2f", selectedValue)
 	}
 
-	// Build other units list (excluding selected)
 	otherUnits := []string{}
 	if selectedUnit != "mm" {
 		otherUnits = append(otherUnits, fmt.Sprintf("%.2f mm", distanceMM))
@@ -1032,10 +1046,83 @@ func encoderDisplay(label string, values EncoderValues, selectedUnit string) g.N
 		otherUnits = append(otherUnits, distanceFeetInches)
 	}
 
-	var unitLabel g.Node
 	if selectedUnit != "ft" {
 		unitLabel = Span(Class("encoder-unit-large"), g.Text(" "+selectedLabel))
 	}
+	otherUnitsLine = strings.Join(otherUnits, " | ")
+	return selectedDisplay, unitLabel, otherUnitsLine
+}
+
+// deltaReadout formats signed delta (X' − X) in mm for the selected unit.
+func deltaReadout(deltaMM float64, selectedUnit string) (text string, unitLabel g.Node) {
+	switch selectedUnit {
+	case "ft":
+		return formatFeetInchesFraction(deltaMM), nil
+	case "m":
+		text = fmt.Sprintf("%+.3f", deltaMM/1000.0)
+		unitLabel = Span(Class("encoder-unit-large"), g.Text(" m"))
+	case "in":
+		text = fmt.Sprintf("%+.3f", deltaMM/25.4)
+		unitLabel = Span(Class("encoder-unit-large"), g.Text(" in"))
+	default:
+		text = fmt.Sprintf("%+.2f", deltaMM)
+		unitLabel = Span(Class("encoder-unit-large"), g.Text(" mm"))
+	}
+	return text, unitLabel
+}
+
+func encoderDisplayXMerged(x, xp EncoderValues, selectedUnit string) g.Node {
+	mainText, mainUnitLabel, otherUnitsLine := distanceReadout(x.Distance, selectedUnit)
+	deltaMM := xp.Distance - x.Distance
+	isZero := math.Abs(deltaMM) < 1e-6
+	deltaText, deltaUnitLabel := deltaReadout(deltaMM, selectedUnit)
+	deltaCardClass := "encoder-delta encoder-delta-zero"
+	if !isZero {
+		deltaCardClass = "encoder-delta encoder-delta-nonzero"
+	}
+	pinXA, pinXB := getGPIOPins("X")
+	pinXpA, pinXpB := getGPIOPins("X'")
+	return Div(
+		Class("encoder-card"),
+		Div(
+			Class("encoder-label"),
+			g.Text("X"),
+		),
+		Div(
+			Class("encoder-distance"),
+			g.Text(mainText),
+			mainUnitLabel,
+		),
+		Div(
+			Class(deltaCardClass),
+			g.Text("Δ (X′−X): "),
+			g.Text(deltaText),
+			deltaUnitLabel,
+		),
+		Div(
+			Class("encoder-details"),
+			Span(
+				Class("encoder-detail-item"),
+				g.Textf("%d", x.Count),
+				Span(Class("encoder-unit-small"), g.Text(" counts")),
+				g.Text(" | "),
+				g.Textf("%.1f", x.RPM),
+				Span(Class("encoder-unit-small"), g.Text(" rpm")),
+			),
+			Span(
+				Class("encoder-detail-item encoder-other-units"),
+				g.Text(otherUnitsLine),
+			),
+			Span(
+				Class("encoder-detail-item encoder-gpio-pins"),
+				g.Textf("GPIO%d/%d · %d/%d", pinXA, pinXB, pinXpA, pinXpB),
+			),
+		),
+	)
+}
+
+func encoderDisplay(label string, values EncoderValues, selectedUnit string) g.Node {
+	selectedDisplay, unitLabel, otherUnitsLine := distanceReadout(values.Distance, selectedUnit)
 	pinA, pinB := getGPIOPins(label)
 	return Div(
 		Class("encoder-card"),
@@ -1060,7 +1147,7 @@ func encoderDisplay(label string, values EncoderValues, selectedUnit string) g.N
 			),
 			Span(
 				Class("encoder-detail-item encoder-other-units"),
-				g.Text(strings.Join(otherUnits, " | ")),
+				g.Text(otherUnitsLine),
 			),
 			Span(
 				Class("encoder-detail-item encoder-gpio-pins"),
