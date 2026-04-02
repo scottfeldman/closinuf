@@ -6,6 +6,7 @@ require (
 	github.com/gofiber/fiber/v2 v2.52.12
 	github.com/warthog618/go-gpiocdev v0.9.1
 	maragu.dev/gomponents v1.2.0
+	maragu.dev/gomponents-htmx v0.6.1
 )
 
 require (
