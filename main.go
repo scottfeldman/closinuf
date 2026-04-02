@@ -1,9 +1,12 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
+	"io"
 	"math"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strings"
 	"sync"
@@ -188,6 +191,7 @@ func main() {
 
 			// Update timestamp when point is actually added
 			lastPointAddedTime = now
+			playCaptureBeep()
 		} else if evt.Type == gpiocdev.LineEventRisingEdge {
 			// On release, reset the handled flag so next press can be processed
 			if btnPressHandled {
@@ -319,6 +323,7 @@ func main() {
 			Z: data.Z.Distance,
 		})
 		pointsMu.Unlock()
+		playCaptureBeep()
 		return c.SendStatus(200)
 	})
 
@@ -413,6 +418,81 @@ func main() {
 	os.Stdout.WriteString("\nShutting down...\n")
 }
 
+// playCaptureBeep plays a short tone on the default audio output (non-blocking).
+func playCaptureBeep() {
+	go func() {
+		f, err := os.CreateTemp("", "closinuf-beep-*.wav")
+		if err != nil {
+			tryPaplayBell()
+			return
+		}
+		path := f.Name()
+		remove := func() { os.Remove(path) }
+		if err := writeBeepWAV(f, 880, 0.1); err != nil {
+			f.Close()
+			remove()
+			tryPaplayBell()
+			return
+		}
+		if err := f.Close(); err != nil {
+			remove()
+			tryPaplayBell()
+			return
+		}
+		defer remove()
+		if exec.Command("aplay", "-q", path).Run() != nil {
+			tryPaplayBell()
+		}
+	}()
+}
+
+func tryPaplayBell() {
+	_ = exec.Command("paplay", "/usr/share/sounds/freedesktop/stereo/bell.oga").Run()
+}
+
+func writeBeepWAV(w io.Writer, freqHz float64, durationSec float64) error {
+	const (
+		sampleRate    = 8000
+		bitsPerSample = 16
+		numChannels   = 1
+	)
+	n := int(sampleRate * durationSec)
+	if n < 1 {
+		return fmt.Errorf("duration too short")
+	}
+	byteRate := sampleRate * numChannels * bitsPerSample / 8
+	blockAlign := numChannels * bitsPerSample / 8
+	dataSize := n * blockAlign
+	riffSize := 36 + uint32(dataSize)
+
+	var hdr [44]byte
+	copy(hdr[0:4], "RIFF")
+	binary.LittleEndian.PutUint32(hdr[4:8], riffSize)
+	copy(hdr[8:12], "WAVE")
+	copy(hdr[12:16], "fmt ")
+	binary.LittleEndian.PutUint32(hdr[16:20], 16)
+	binary.LittleEndian.PutUint16(hdr[20:22], 1)
+	binary.LittleEndian.PutUint16(hdr[22:24], numChannels)
+	binary.LittleEndian.PutUint32(hdr[24:28], uint32(sampleRate))
+	binary.LittleEndian.PutUint32(hdr[28:32], uint32(byteRate))
+	binary.LittleEndian.PutUint16(hdr[32:34], uint16(blockAlign))
+	binary.LittleEndian.PutUint16(hdr[34:36], bitsPerSample)
+	copy(hdr[36:40], "data")
+	binary.LittleEndian.PutUint32(hdr[40:44], uint32(dataSize))
+	if _, err := w.Write(hdr[:]); err != nil {
+		return err
+	}
+	const amp = 0.22 * 32767
+	for i := 0; i < n; i++ {
+		t := float64(i) / float64(sampleRate)
+		sample := int16(amp * math.Sin(2*math.Pi*freqHz*t))
+		if err := binary.Write(w, binary.LittleEndian, sample); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func getEncoderData() EncoderData {
 	var data EncoderData
 	for i, enc := range encoders {
@@ -494,6 +574,9 @@ func Page(data EncoderData, unit string) g.Node {
 				* {
 					box-sizing: border-box;
 				}
+				html {
+					scroll-padding-bottom: clamp(10rem, 48vh, 440px);
+				}
 				body {
 					font-family: 'Courier New', 'Courier', monospace;
 					min-height: 100vh;
@@ -503,6 +586,7 @@ func Page(data EncoderData, unit string) g.Node {
 					align-items: center;
 					margin: 0;
 					padding: 2rem;
+					padding-bottom: clamp(10rem, 48vh, 440px);
 					background: #0a0a0a;
 					color: #00ff41;
 					text-shadow: 0 0 5px #00ff41, 0 0 10px #00ff41;
