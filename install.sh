@@ -29,14 +29,14 @@ echo "Building closinuf..."
 sudo -u "${APP_USER}" env HOME="${USER_HOME}" bash -c "cd '${INSTALL_DIR}' && go build -o closinuf ."
 chown "${APP_USER}:${APP_USER}" "${INSTALL_DIR}/closinuf"
 
-cat << 'BROWSER_SCRIPT' > /usr/local/bin/closinuf-browser.sh
-#!/usr/bin/env sh
-# Wait for the local app, then open the desktop default browser (autostart / desktop session).
-export DISPLAY="${DISPLAY:-:0}"
-until curl -sf "http://127.0.0.1:3000" >/dev/null 2>&1; do sleep 1; done
-exec xdg-open "http://127.0.0.1:3000"
-BROWSER_SCRIPT
-chmod 0755 /usr/local/bin/closinuf-browser.sh
+# cat << 'BROWSER_SCRIPT' > /usr/local/bin/closinuf-browser.sh
+# #!/usr/bin/env sh
+# # Wait for the local app, then open the desktop default browser (autostart / desktop session).
+# export DISPLAY="${DISPLAY:-:0}"
+# until curl -sf "http://127.0.0.1:3000" >/dev/null 2>&1; do sleep 1; done
+# exec xdg-open "http://127.0.0.1:3000"
+# BROWSER_SCRIPT
+# chmod 0755 /usr/local/bin/closinuf-browser.sh
 
 cat << UNIT > /etc/systemd/system/closinuf.service
 [Unit]
@@ -62,22 +62,22 @@ systemctl daemon-reload
 systemctl enable closinuf.service
 systemctl restart closinuf.service
 
-sudo -u "${APP_USER}" mkdir -p "${USER_HOME}/.config/autostart"
-cat << 'DESKTOP' > "${USER_HOME}/.config/autostart/closinuf-browser.desktop"
-[Desktop Entry]
-Type=Application
-Name=Closinuf (browser)
-Exec=/usr/local/bin/closinuf-browser.sh
-X-GNOME-Autostart-enabled=true
-DESKTOP
-chown "${APP_USER}:${APP_USER}" "${USER_HOME}/.config/autostart/closinuf-browser.desktop"
+# sudo -u "${APP_USER}" mkdir -p "${USER_HOME}/.config/autostart"
+# cat << 'DESKTOP' > "${USER_HOME}/.config/autostart/closinuf-browser.desktop"
+# [Desktop Entry]
+# Type=Application
+# Name=Closinuf (browser)
+# Exec=/usr/local/bin/closinuf-browser.sh
+# X-GNOME-Autostart-enabled=true
+# DESKTOP
+# chown "${APP_USER}:${APP_USER}" "${USER_HOME}/.config/autostart/closinuf-browser.desktop"
 
-if command -v raspi-config >/dev/null 2>&1; then
-	echo "Enabling desktop autologin for ${APP_USER} (raspi-config)..."
-	raspi-config nonint do_boot_behaviour B2 || true
-else
-	echo "raspi-config not found; enable desktop autologin manually in your display manager." >&2
-fi
+# if command -v raspi-config >/dev/null 2>&1; then
+# 	echo "Enabling desktop autologin for ${APP_USER} (raspi-config)..."
+# 	raspi-config nonint do_boot_behaviour B2 || true
+# else
+# 	echo "raspi-config not found; enable desktop autologin manually in your display manager." >&2
+# fi
 
 echo
 echo "Installed for user ${APP_USER}."
