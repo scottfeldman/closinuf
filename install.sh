@@ -20,9 +20,10 @@ if [[ -z "${USER_HOME}" || ! -d "${USER_HOME}" ]]; then
 	exit 1
 fi
 
-if ! command -v go >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
+echo "Installing Go..."
+if ! command -v go >/dev/null 2>&1 ; then
 	apt-get update -qq
-	apt-get install -y golang-go curl
+	apt-get install -y golang-go
 fi
 
 echo "Building closinuf..."
