@@ -1,0 +1,267 @@
+# -*- coding: utf-8 -*-
+"""Build X-running B-splines from slice sketches, then a Curves WB Gordon surface.
+
+Prereqs: Run CreateCrossSections.FCMacro first. Slice sketches are found by attachment
+to DatumPlane_X* on the Body (works even when FreeCAD renames the sketch to Sketch001).
+
+Curves workbench (tomate44/Curves) must be installed.
+
+Convention (Curves WB, two-source mode):
+  Sources[0] = guides  = longitudinal curves (constant Y, varying X) — built here every Y_STEP.
+  Sources[1] = profiles = slice / cross-section curves (constant X) — edges from each sketch.
+
+So: slice sketches are profiles; the new X-direction splines are guides (not the other way around).
+
+Output: Part::Feature compounds (optional visibility) + Part::FeaturePython Gordon surface.
+"""
+import importlib
+import re
+
+import FreeCAD as App
+import FreeCADGui as Gui
+import Part
+
+Y_STEP_MM = 50.0
+Y_TOL_MM = 1e-4
+
+
+def _active_body(doc):
+    try:
+        ad = Gui.ActiveDocument
+        if ad and ad.ActiveView:
+            b = ad.ActiveView.getActiveObject("pdbody")
+            if b is not None:
+                return b
+    except Exception:
+        pass
+    for obj in doc.Objects:
+        if obj.TypeId == "PartDesign::Body":
+            return obj
+    return None
+
+
+def _sketch_in_body(sk, body):
+    try:
+        if sk.getParentGeoFeatureGroup() == body:
+            return True
+    except Exception:
+        pass
+    return sk in getattr(body, "Group", [])
+
+
+def _sketch_attached_to_slice_datum(sk):
+    sup = getattr(sk, "AttachmentSupport", None) or getattr(sk, "Support", None)
+    if not sup:
+        return False
+    for ref, _sub in sup:
+        if ref is None:
+            continue
+        rn = getattr(ref, "Name", "") or ""
+        if rn.startswith("DatumPlane_X"):
+            return True
+    return False
+
+
+def _slice_sketches(doc, body):
+    """Slice sketches from CreateCrossSections: same Body, same datum naming.
+
+    FreeCAD often renames object Name to Sketch001… while the tree shows a custom
+    Label (e.g. Sketch_X00046). Matching only o.Name misses half the slices.
+    Primary rule: sketch attached to DatumPlane_X* from the cross-section macro.
+    Fallback: Name looks like Sketch_X… (optional _ before digits, optional -).
+    """
+    name_pat = re.compile(r"^Sketch_X_?-?\d+$")
+    found = []
+    for o in doc.Objects:
+        if o.TypeId != "Sketcher::SketchObject":
+            continue
+        if not _sketch_in_body(o, body):
+            continue
+        if _sketch_attached_to_slice_datum(o) or name_pat.match(o.Name):
+            found.append(o)
+    found.sort(key=lambda sk: sk.Shape.BoundBox.XMin)
+    return found
+
+
+def _profile_edge(sk):
+    eds = sk.Shape.Edges
+    if len(eds) == 1:
+        return eds[0]
+    if len(eds) == 0:
+        return None
+    w = Part.Wire(eds)
+    try:
+        apx = w.approximate(1e-6, 1e-4, 25, 999)
+        sh = apx.toShape()
+        if sh.Edges:
+            return sh.Edges[0]
+    except Exception:
+        pass
+    return eds[0]
+
+
+def _point_on_edge_at_y(edge, y_target):
+    c = edge.Curve
+    ta = edge.FirstParameter
+    tb = edge.LastParameter
+    pa = c.value(ta)
+    pb = c.value(tb)
+    ymin = min(pa.y, pb.y)
+    ymax = max(pa.y, pb.y)
+    if ymax - ymin < Y_TOL_MM:
+        return App.Vector(pa.x, y_target, 0.5 * (pa.z + pb.z))
+    y_use = max(ymin, min(ymax, y_target))
+    if pa.y > pb.y:
+        ta, tb = tb, ta
+        pa, pb = pb, pa
+    for _ in range(80):
+        tm = 0.5 * (ta + tb)
+        ym = c.value(tm).y
+        if abs(ym - y_use) < Y_TOL_MM:
+            return c.value(tm)
+        if ym < y_use:
+            ta = tm
+        else:
+            tb = tm
+    return c.value(0.5 * (ta + tb))
+
+
+def _y_stations(y0, y1):
+    if y1 < y0:
+        y0, y1 = y1, y0
+    step = Y_STEP_MM
+    ys = [y0]
+    y = y0 + step
+    while y < y1 - 1e-6:
+        ys.append(y)
+        y += step
+    if abs(ys[-1] - y1) > 1e-3:
+        ys.append(y1)
+    return ys
+
+
+def _import_gordon():
+    mod = importlib.import_module("freecad.Curves.gordonFP")
+    return mod.gordonFP, mod.gordonVP
+
+
+def main():
+    doc = App.activeDocument()
+    if doc is None:
+        App.Console.PrintError("GordonHoodFromSlices: no active document.\n")
+        return
+
+    body = _active_body(doc)
+    if body is None:
+        App.Console.PrintError(
+            "GordonHoodFromSlices: no PartDesign Body (activate one in the tree).\n"
+        )
+        return
+
+    sketches = _slice_sketches(doc, body)
+    if len(sketches) < 2:
+        App.Console.PrintError(
+            "GordonHoodFromSlices: need at least two slice sketches (attached to DatumPlane_X* on the Body).\n"
+        )
+        return
+
+    doc.recompute()
+
+    try:
+        gordon_fp_cls, gordon_vp_cls = _import_gordon()
+    except Exception as exc:
+        App.Console.PrintError(
+            "GordonHoodFromSlices: Curves workbench not available (%s).\n" % (exc,)
+        )
+        return
+
+    prof_edges = []
+    for sk in sketches:
+        if not sk.Shape or sk.Shape.isNull():
+            App.Console.PrintError(
+                "GordonHoodFromSlices: sketch %s has no shape.\n" % (sk.Name,)
+            )
+            return
+        e = _profile_edge(sk)
+        if e is None:
+            App.Console.PrintError(
+                "GordonHoodFromSlices: no edges in sketch %s.\n" % (sk.Name,)
+            )
+            return
+        prof_edges.append(e)
+
+    bb = sketches[0].Shape.BoundBox
+    for sk in sketches[1:]:
+        bb.add(sk.Shape.BoundBox)
+    y0 = bb.YMin
+    y1 = bb.YMax
+    stations = _y_stations(y0, y1)
+
+    guide_shapes = []
+    for y in stations:
+        pts = []
+        for sk in sketches:
+            edge = _profile_edge(sk)
+            pts.append(_point_on_edge_at_y(edge, y))
+        if len(pts) < 2:
+            continue
+        try:
+            bs = Part.BSplineCurve()
+            bs.interpolate(pts, False)
+            guide_shapes.append(bs.toShape())
+        except Exception:
+            App.Console.PrintWarning(
+                "GordonHoodFromSlices: interpolate failed at y=%g, using polyline.\n"
+                % (y,)
+            )
+            guide_shapes.append(Part.makePolygon(pts))
+
+    if len(guide_shapes) < 2:
+        App.Console.PrintError(
+            "GordonHoodFromSlices: need at least two longitudinal curves.\n"
+        )
+        return
+
+    gname = "HoodGordon_Guides"
+    pname = "HoodGordon_Profiles"
+    gordname = "HoodGordonSurface"
+    for n in (gordname, gname, pname):
+        old = doc.getObject(n)
+        if old is not None:
+            doc.removeObject(old.Name)
+
+    guides_obj = doc.addObject("Part::Feature", gname)
+    guides_obj.Shape = Part.Compound(guide_shapes)
+    profiles_obj = doc.addObject("Part::Feature", pname)
+    profiles_obj.Shape = Part.Compound(prof_edges)
+
+    gordon = doc.addObject("Part::FeaturePython", gordname)
+    gordon_fp_cls(gordon)
+    gordon_vp_cls(gordon.ViewObject)
+    gordon.Sources = [guides_obj, profiles_obj]
+    doc.recompute()
+
+    gv = getattr(guides_obj, "ViewObject", None)
+    pv = getattr(profiles_obj, "ViewObject", None)
+    if gv is not None:
+        gv.Visibility = False
+    if pv is not None:
+        pv.Visibility = False
+
+    App.Console.PrintMessage(
+        "GordonHoodFromSlices: %d profiles, %d guides (Y every %g mm, %g..%g), Gordon=%s.\n"
+        % (
+            len(prof_edges),
+            len(guide_shapes),
+            Y_STEP_MM,
+            y0,
+            y1,
+            gordon.Name,
+        )
+    )
+    App.Console.PrintMessage(
+        "Curves WB: Sources[0]=guides (X-running), Sources[1]=profiles (slices).\n"
+    )
+
+
+main()

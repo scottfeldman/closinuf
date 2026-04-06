@@ -1,0 +1,187 @@
+# -*- coding: utf-8 -*-
+"""Build X-normal PartDesign planes (ObjectYZ on Body Origin) with sketches.
+
+For each distinct X in a Points cloud, creates a plane at that X using
+AttachmentOffset position (0, 0, x) and rotation axis (0, 0, 1), then a sketch
+with a B-spline through (y, z) of the slice points sorted by y.
+
+Usage: Import the .asc with Points workbench, add a PartDesign Body, select the
+point cloud (optional), then run this macro. If nothing is selected, the first
+Points::Feature in the document is used.
+"""
+import FreeCAD as App
+import FreeCADGui as Gui
+import Part
+from collections import defaultdict
+
+X_GROUP_TOL_MM = 0.5
+
+
+def _new_partdesign_plane(body, name):
+    for type_id in ("PartDesign::DatumPlane", "PartDesign::Plane"):
+        try:
+            return body.newObject(type_id, name)
+        except Exception:
+            continue
+    raise RuntimeError("Could not create PartDesign datum plane object.")
+
+
+def _active_body(doc):
+    try:
+        ad = Gui.ActiveDocument
+        if ad and ad.ActiveView:
+            b = ad.ActiveView.getActiveObject("pdbody")
+            if b is not None:
+                return b
+    except Exception:
+        pass
+    for obj in doc.Objects:
+        if obj.TypeId == "PartDesign::Body":
+            return obj
+    body = doc.addObject("PartDesign::Body", "Body")
+    doc.recompute()
+    return body
+
+
+def _extract_points(obj):
+    pk = getattr(obj, "Points", None)
+    if pk is None:
+        return []
+    if hasattr(pk, "getPoints"):
+        try:
+            pts, _normals = pk.getPoints(0)
+            return [App.Vector(p) for p in pts]
+        except Exception:
+            pass
+    n = getattr(pk, "CountPoints", None)
+    if n is not None:
+        out = []
+        for i in range(int(n)):
+            try:
+                out.append(App.Vector(pk.getPoint(i)))
+            except Exception:
+                break
+        if out:
+            return out
+    raw = getattr(pk, "Points", None)
+    if isinstance(raw, (list, tuple)):
+        return [App.Vector(p) for p in raw]
+    shp = getattr(obj, "Shape", None)
+    if shp and getattr(shp, "Vertexes", None):
+        return [v.Point for v in shp.Vertexes]
+    return []
+
+
+def _pick_points_object(doc):
+    try:
+        sel = Gui.Selection.getSelection()
+    except Exception:
+        sel = []
+    for o in sel:
+        if o is None:
+            continue
+        if "Points" in getattr(o, "TypeId", "") or (
+            hasattr(o, "Points") and _extract_points(o)
+        ):
+            return o
+    for name in (
+        "car_hood_40x40in_12x12",
+        "car_hood_grid",
+        "Points",
+    ):
+        cand = doc.getObject(name)
+        if cand is not None and _extract_points(cand):
+            return cand
+    for obj in doc.Objects:
+        if "Points" in getattr(obj, "TypeId", "") and _extract_points(obj):
+            return obj
+    return None
+
+
+def _group_by_x(vectors):
+    buckets = defaultdict(list)
+    for v in vectors:
+        key = round(v.x / X_GROUP_TOL_MM) * X_GROUP_TOL_MM
+        buckets[key].append(v)
+    return sorted(buckets.items(), key=lambda kv: kv[0])
+
+
+def main():
+    doc = App.activeDocument()
+    if doc is None:
+        App.Console.PrintError("CreateCrossSections: no active document.\n")
+        return
+
+    points_obj = _pick_points_object(doc)
+    if points_obj is None:
+        App.Console.PrintError(
+            "CreateCrossSections: select a Points object or add a Points::Feature.\n"
+        )
+        return
+
+    vecs = _extract_points(points_obj)
+    if len(vecs) < 2:
+        App.Console.PrintError("CreateCrossSections: need at least two points.\n")
+        return
+
+    body = _active_body(doc)
+    doc.recompute()
+
+    groups = _group_by_x(vecs)
+    created = 0
+    for _xkey, pts in groups:
+        pts_sorted = sorted(pts, key=lambda p: (p.y, p.z))
+        slice_x = sum(p.x for p in pts_sorted) / len(pts_sorted)
+        tag = "X%05d" % int(round(slice_x))
+
+        plane = _new_partdesign_plane(body, "DatumPlane_" + tag)
+        plane.AttachmentSupport = [(body.Origin, "")]
+        plane.MapMode = "ObjectYZ"
+        plane.AttachmentOffset = App.Placement(
+            App.Vector(0.0, 0.0, slice_x),
+            App.Rotation(App.Vector(0.0, 0.0, 1.0), 0.0),
+        )
+        doc.recompute()
+        vo = getattr(plane, "ViewObject", None)
+        if vo is not None:
+            vo.Visibility = False
+
+        sketch = body.newObject("Sketcher::SketchObject", "Sketch_" + tag)
+        sketch.MapMode = "FlatFace"
+        if hasattr(sketch, "AttachmentSupport"):
+            sketch.AttachmentSupport = [(plane, ("",))]
+        else:
+            sketch.Support = [(plane, ("",))]
+        doc.recompute()
+
+        g3d = [App.Vector(slice_x, p.y, p.z) for p in pts_sorted]
+        inv = sketch.Placement.inverse()
+        pts2d = []
+        for g in g3d:
+            loc = inv.multVec(g)
+            pts2d.append(App.Vector(loc.x, loc.y, 0.0))
+
+        if len(pts2d) < 2:
+            continue
+        if len(pts2d) == 2:
+            sketch.addGeometry(Part.LineSegment(pts2d[0], pts2d[1]), False)
+        else:
+            try:
+                bs = Part.BSplineCurve()
+                bs.interpolate(pts2d, False)
+                sketch.addGeometry(bs, False)
+            except Exception:
+                for i in range(len(pts2d) - 1):
+                    sketch.addGeometry(
+                        Part.LineSegment(pts2d[i], pts2d[i + 1]), False
+                    )
+        doc.recompute()
+        created += 1
+
+    App.Console.PrintMessage(
+        "CreateCrossSections: created %d slice(s) on %s.\n"
+        % (created, body.Label)
+    )
+
+
+main()
