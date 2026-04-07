@@ -1,37 +1,27 @@
 # -*- coding: utf-8 -*-
-"""Build X-running B-splines from slice sketches, then a Curves WB Gordon surface.
+"""Point cloud → X-normal slice sketches → parametric Curves Gordon surface (one run).
 
-Prereqs: Run CreateCrossSections.FCMacro first. Slice sketches are found by attachment
-to DatumPlane_X* on the Body (works even when FreeCAD renames the sketch to Sketch001).
+Select the Points object (optional). Uses or creates a PartDesign Body. Requires Curves WB
+for the Gordon step. Drivers live in the Body (link scope). Edit sketches → F5 to refresh.
+Slice B-splines call exposeInternalGeometry so control points are available without using
+Sketcher “show internal geometry” first (when the Sketcher build supports it).
 
-Curves workbench (tomate44/Curves) must be installed.
-
-Convention (Curves WB, two-source mode):
-  Sources[0] = guides  = longitudinal curves (constant Y, varying X) — built here every Y_STEP.
-  Sources[1] = profiles = slice / cross-section curves (constant X) — edges from each sketch.
-
-So: slice sketches are profiles; the new X-direction splines are guides (not the other way around).
-
-Output: Two Part::FeaturePython drivers plus Curves Gordon surface, all parented under the
-same PartDesign Body as the slice sketches (required for in-scope PropertyLinkList).
-Edit a slice sketch → recompute → surface updates.
-
-Moving one sketch control point does not move the whole intersection grid automatically;
-the grid is implicit (slice B-splines × Y-station guides). For a literal point grid in
-the sketch, use Sketcher carbon-copy or construction geometry (not implemented here).
+Curves WB: Sources[0]=guides (X-running, YStep mm apart), Sources[1]=profiles (slices).
 """
 import importlib
 import re
+from collections import defaultdict
 
 import FreeCAD as App
 import FreeCADGui as Gui
 import Part
 
+X_GROUP_TOL_MM = 0.5
 Y_STEP_MM = 50.0
 Y_TOL_MM = 1e-4
 
 
-def _active_body(doc):
+def _active_body(doc, create_if_missing=False):
     try:
         ad = Gui.ActiveDocument
         if ad and ad.ActiveView:
@@ -43,7 +33,83 @@ def _active_body(doc):
     for obj in doc.Objects:
         if obj.TypeId == "PartDesign::Body":
             return obj
+    if create_if_missing:
+        body = doc.addObject("PartDesign::Body", "Body")
+        doc.recompute()
+        return body
     return None
+
+
+def _new_partdesign_plane(body, name):
+    for type_id in ("PartDesign::DatumPlane", "PartDesign::Plane"):
+        try:
+            return body.newObject(type_id, name)
+        except Exception:
+            continue
+    raise RuntimeError("Could not create PartDesign datum plane object.")
+
+
+def _extract_points(obj):
+    pk = getattr(obj, "Points", None)
+    if pk is None:
+        return []
+    if hasattr(pk, "getPoints"):
+        try:
+            pts, _normals = pk.getPoints(0)
+            return [App.Vector(p) for p in pts]
+        except Exception:
+            pass
+    n = getattr(pk, "CountPoints", None)
+    if n is not None:
+        out = []
+        for i in range(int(n)):
+            try:
+                out.append(App.Vector(pk.getPoint(i)))
+            except Exception:
+                break
+        if out:
+            return out
+    raw = getattr(pk, "Points", None)
+    if isinstance(raw, (list, tuple)):
+        return [App.Vector(p) for p in raw]
+    shp = getattr(obj, "Shape", None)
+    if shp and getattr(shp, "Vertexes", None):
+        return [v.Point for v in shp.Vertexes]
+    return []
+
+
+def _pick_points_object(doc):
+    try:
+        sel = Gui.Selection.getSelection()
+    except Exception:
+        sel = []
+    for o in sel:
+        if o is None:
+            continue
+        if "Points" in getattr(o, "TypeId", "") or (
+            hasattr(o, "Points") and _extract_points(o)
+        ):
+            return o
+    for name in (
+        "points_40x40_grid",
+        "points_grid",
+        "Points",
+    ):
+        cand = doc.getObject(name)
+        if cand is not None and _extract_points(cand):
+            return cand
+    for obj in doc.Objects:
+        if "Points" in getattr(obj, "TypeId", "") and _extract_points(obj):
+            return obj
+    return None
+
+
+def _group_by_x(vectors):
+    buckets = defaultdict(list)
+    for v in vectors:
+        key = round(v.x / X_GROUP_TOL_MM) * X_GROUP_TOL_MM
+        buckets[key].append(v)
+    return sorted(buckets.items(), key=lambda kv: kv[0])
 
 
 def _sketch_in_body(sk, body):
@@ -69,13 +135,6 @@ def _sketch_attached_to_slice_datum(sk):
 
 
 def _slice_sketches(doc, body):
-    """Slice sketches from CreateCrossSections: same Body, same datum naming.
-
-    FreeCAD often renames object Name to Sketch001… while the tree shows a custom
-    Label (e.g. Sketch_X00046). Matching only o.Name misses half the slices.
-    Primary rule: sketch attached to DatumPlane_X* from the cross-section macro.
-    Fallback: Name looks like Sketch_X… (optional _ before digits, optional -).
-    """
     name_pat = re.compile(r"^Sketch_X_?-?\d+$")
     found = []
     for o in doc.Objects:
@@ -153,7 +212,6 @@ def _import_gordon():
 
 
 def _move_into_body(body, obj, after_feature=None):
-    """Parent obj to PartDesign Body so links to sketches in that body are in scope."""
     if obj is None or body is None:
         return False
     try:
@@ -189,7 +247,7 @@ def _move_into_body(body, obj, after_feature=None):
         return True
     except Exception as exc:
         App.Console.PrintWarning(
-            "GordonHoodFromSlices: could not add %s to Body (%s).\n"
+            "PointsToSurface: could not add %s to Body (%s).\n"
             % (getattr(obj, "Name", "?"), exc)
         )
         return False
@@ -240,9 +298,7 @@ def _build_guide_shapes(sketches, y_step):
     return shapes
 
 
-class _HoodProfilesDriverFP:
-    """Compound of profile edges; Shape tracks linked slice sketches."""
-
+class _GordonProfilesDriverFP:
     def __init__(self, obj):
         obj.addProperty(
             "App::PropertyLinkList",
@@ -270,9 +326,7 @@ class _HoodProfilesDriverFP:
         return None
 
 
-class _HoodGuidesDriverFP:
-    """Compound of X-running guide curves; tracks same sketches + YStep."""
-
+class _GordonGuidesDriverFP:
     def __init__(self, obj):
         obj.addProperty(
             "App::PropertyLinkList",
@@ -322,25 +376,94 @@ class _DriverVP:
         return None
 
 
-def main():
-    doc = App.activeDocument()
-    if doc is None:
-        App.Console.PrintError("GordonHoodFromSlices: no active document.\n")
-        return
-
-    body = _active_body(doc)
-    if body is None:
+def _run_cross_sections(doc, body):
+    points_obj = _pick_points_object(doc)
+    if points_obj is None:
         App.Console.PrintError(
-            "GordonHoodFromSlices: no PartDesign Body (activate one in the tree).\n"
+            "PointsToSurface: select a Points object or add a Points::Feature.\n"
         )
-        return
+        return False
 
+    vecs = _extract_points(points_obj)
+    if len(vecs) < 2:
+        App.Console.PrintError("PointsToSurface: need at least two points.\n")
+        return False
+
+    doc.recompute()
+    groups = _group_by_x(vecs)
+    created = 0
+    for _xkey, pts in groups:
+        pts_sorted = sorted(pts, key=lambda p: (p.y, p.z))
+        slice_x = sum(p.x for p in pts_sorted) / len(pts_sorted)
+        tag = "X%05d" % int(round(slice_x))
+
+        plane = _new_partdesign_plane(body, "DatumPlane_" + tag)
+        plane.AttachmentSupport = [(body.Origin, "")]
+        plane.MapMode = "ObjectYZ"
+        plane.AttachmentOffset = App.Placement(
+            App.Vector(0.0, 0.0, slice_x),
+            App.Rotation(App.Vector(0.0, 0.0, 1.0), 0.0),
+        )
+        doc.recompute()
+        vo = getattr(plane, "ViewObject", None)
+        if vo is not None:
+            vo.Visibility = False
+
+        sketch = body.newObject("Sketcher::SketchObject", "Sketch_" + tag)
+        sketch.MapMode = "FlatFace"
+        if hasattr(sketch, "AttachmentSupport"):
+            sketch.AttachmentSupport = [(plane, ("",))]
+        else:
+            sketch.Support = [(plane, ("",))]
+        doc.recompute()
+
+        g3d = [App.Vector(slice_x, p.y, p.z) for p in pts_sorted]
+        inv = sketch.Placement.inverse()
+        pts2d = []
+        for g in g3d:
+            loc = inv.multVec(g)
+            pts2d.append(App.Vector(loc.x, loc.y, 0.0))
+
+        if len(pts2d) < 2:
+            continue
+        if len(pts2d) == 2:
+            sketch.addGeometry(Part.LineSegment(pts2d[0], pts2d[1]), False)
+        else:
+            try:
+                bs = Part.BSplineCurve()
+                bs.interpolate(pts2d, False)
+                gid = sketch.addGeometry(bs, False)
+                _expose = getattr(sketch, "exposeInternalGeometry", None) or getattr(
+                    sketch, "ExposeInternalGeometry", None
+                )
+                if _expose is not None:
+                    try:
+                        _expose(gid)
+                    except Exception:
+                        pass
+            except Exception:
+                for i in range(len(pts2d) - 1):
+                    sketch.addGeometry(
+                        Part.LineSegment(pts2d[i], pts2d[i + 1]), False
+                    )
+        doc.recompute()
+        created += 1
+
+    App.Console.PrintMessage(
+        "PointsToSurface: created %d slice(s) on %s.\n"
+        % (created, body.Label)
+    )
+    return True
+
+
+def _run_gordon_surface(doc, body):
     sketches = _slice_sketches(doc, body)
     if len(sketches) < 2:
         App.Console.PrintError(
-            "GordonHoodFromSlices: need at least two slice sketches (attached to DatumPlane_X* on the Body).\n"
+            "PointsToSurface: need at least two slice sketches "
+            "(DatumPlane_X* on the Body).\n"
         )
-        return
+        return False
 
     doc.recompute()
 
@@ -348,29 +471,29 @@ def main():
         gordon_fp_cls, gordon_vp_cls = _import_gordon()
     except Exception as exc:
         App.Console.PrintError(
-            "GordonHoodFromSlices: Curves workbench not available (%s).\n" % (exc,)
+            "PointsToSurface: Curves workbench not available (%s).\n" % (exc,)
         )
-        return
+        return False
 
     for sk in sketches:
         if not sk.Shape or sk.Shape.isNull():
             App.Console.PrintError(
-                "GordonHoodFromSlices: sketch %s has no shape.\n" % (sk.Name,)
+                "PointsToSurface: sketch %s has no shape.\n" % (sk.Name,)
             )
-            return
+            return False
         if _profile_edge(sk) is None:
             App.Console.PrintError(
-                "GordonHoodFromSlices: no edges in sketch %s.\n" % (sk.Name,)
+                "PointsToSurface: no edges in sketch %s.\n" % (sk.Name,)
             )
-            return
+            return False
 
     prof_edges = _build_profile_edges(sketches)
     guide_shapes = _build_guide_shapes(sketches, Y_STEP_MM)
     if len(prof_edges) < 2 or len(guide_shapes) < 2:
         App.Console.PrintError(
-            "GordonHoodFromSlices: need at least two profiles and two guides.\n"
+            "PointsToSurface: need at least two profiles and two guides.\n"
         )
-        return
+        return False
 
     bb = sketches[0].Shape.BoundBox
     for sk in sketches[1:]:
@@ -378,37 +501,34 @@ def main():
     y0 = bb.YMin
     y1 = bb.YMax
 
-    gname = "HoodGordon_Guides"
-    pname = "HoodGordon_Profiles"
-    gordname = "HoodGordonSurface"
+    gname = "GordonSurface_Guides"
+    pname = "GordonSurface_Profiles"
+    gordname = "GordonSurface"
     for n in (gordname, gname, pname):
         old = doc.getObject(n)
         if old is not None:
             doc.removeObject(old.Name)
 
     guides_obj = doc.addObject("Part::FeaturePython", gname)
-    _HoodGuidesDriverFP(guides_obj)
+    _GordonGuidesDriverFP(guides_obj)
     _DriverVP(guides_obj.ViewObject)
 
     profiles_obj = doc.addObject("Part::FeaturePython", pname)
-    _HoodProfilesDriverFP(profiles_obj)
+    _GordonProfilesDriverFP(profiles_obj)
     _DriverVP(profiles_obj.ViewObject)
 
     gordon = doc.addObject("Part::FeaturePython", gordname)
     gordon_fp_cls(gordon)
     gordon_vp_cls(gordon.ViewObject)
 
-    # PartDesign link scope: document-level objects cannot link to sketches inside a Body.
-    # Parent drivers + Gordon into the same Body as the slices, then assign links.
     sks_sorted = _sorted_slice_sketches(sketches)
     anchor = sks_sorted[-1] if sks_sorted else None
     for o in (guides_obj, profiles_obj, gordon):
         if not _move_into_body(body, o, anchor):
             App.Console.PrintError(
-                "GordonHoodFromSlices: failed to add %s to Body — fix tree manually or "
-                "use a Body that accepts Part::FeaturePython.\n" % (o.Name,)
+                "PointsToSurface: failed to add %s to Body.\n" % (o.Name,)
             )
-            return
+            return False
 
     guides_obj.SliceSketches = sketches
     guides_obj.YStep = float(Y_STEP_MM)
@@ -424,7 +544,7 @@ def main():
         pv.Visibility = False
 
     App.Console.PrintMessage(
-        "GordonHoodFromSlices: %d profiles, %d guides (Y every %g mm, %g..%g), Gordon=%s.\n"
+        "PointsToSurface: %d profiles, %d guides (Y every %g mm, %g..%g), Gordon=%s.\n"
         % (
             len(prof_edges),
             len(guide_shapes),
@@ -438,10 +558,28 @@ def main():
         "Curves WB: Sources[0]=guides (X-running), Sources[1]=profiles (slices).\n"
     )
     App.Console.PrintMessage(
-        "Parametric: HoodGordon_Profiles / HoodGordon_Guides link slice sketches — "
-        "recompute (F5) after editing a sketch to refresh the surface. "
-        "Adjust YStep on Guides to change longitudinal spacing.\n"
+        "Parametric: edit slice sketches, then F5. Adjust YStep on GordonSurface_Guides.\n"
     )
+    return True
+
+
+def main():
+    doc = App.activeDocument()
+    if doc is None:
+        App.Console.PrintError("PointsToSurface: no active document.\n")
+        return
+
+    body = _active_body(doc, create_if_missing=True)
+    if body is None:
+        App.Console.PrintError(
+            "PointsToSurface: no PartDesign Body (activate one in the tree).\n"
+        )
+        return
+
+    if not _run_cross_sections(doc, body):
+        return
+    if not _run_gordon_surface(doc, body):
+        return
 
 
 main()
