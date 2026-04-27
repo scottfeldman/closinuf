@@ -1,12 +1,20 @@
 # -*- coding: utf-8 -*-
 """Point cloud → X-normal slice sketches → parametric Curves Gordon surface (one run).
 
-Select the Points object (optional). Uses or creates a PartDesign Body. Requires Curves WB
+Select the point cloud in the tree before running (required if the document has more than
+one Points::Feature). If exactly one cloud exists, it is used when nothing is selected.
+Uses or creates a PartDesign Body. Requires Curves WB
 for the Gordon step. Drivers live in the Body (link scope). Edit sketches → F5 to refresh.
+At run time you are prompted for guide spacing along Y (mm); the last value is remembered
+(User parameter BaseApp/Macro/PointsToSurface, key YStep). You can also edit YStep on
+GordonSurface_Guides after the fact.
 Slice B-splines call exposeInternalGeometry so control points are available without using
 Sketcher “show internal geometry” first (when the Sketcher build supports it).
 
 Curves WB: Sources[0]=guides (X-running, YStep mm apart), Sources[1]=profiles (slices).
+Guide points use each profile edge at the requested Y when that Y lies on the edge; otherwise
+they lie on the straight line between the sampled Y-minimum and Y-maximum points on that edge
+(slice plane), so out-of-range Y does not clamp to one vertex and guides stay well-behaved.
 """
 import importlib
 import re
@@ -19,6 +27,67 @@ import Part
 X_GROUP_TOL_MM = 0.5
 Y_STEP_MM = 50.0
 Y_TOL_MM = 1e-4
+_PARAM_Y_STEP = "User parameter:BaseApp/Macro/PointsToSurface"
+
+
+def _input_double_dialog(parent, title, label, default, minimum, maximum, decimals):
+    try:
+        from PySide2.QtWidgets import QInputDialog
+
+        return QInputDialog.getDouble(
+            parent, title, label, float(default), minimum, maximum, decimals
+        )
+    except ImportError:
+        pass
+    try:
+        from PySide6.QtWidgets import QInputDialog
+
+        return QInputDialog.getDouble(
+            parent, title, label, float(default), minimum, maximum, decimals
+        )
+    except ImportError:
+        pass
+    try:
+        from PySide.QtGui import QInputDialog
+
+        return QInputDialog.getDouble(
+            parent, title, label, float(default), minimum, maximum, decimals
+        )
+    except ImportError:
+        pass
+    return (float(default), True)
+
+
+def _resolve_y_step_mm():
+    """Default from Y_STEP_MM, then last-used from Param; GUI prompt when available."""
+    pg = App.ParamGet(_PARAM_Y_STEP)
+    stored = pg.GetFloat("YStep", 0.0)
+    default = float(stored) if stored > 0 else float(Y_STEP_MM)
+    try:
+        mw = Gui.getMainWindow()
+        if mw is not None:
+            val, ok = _input_double_dialog(
+                mw,
+                "PointsToSurface",
+                "Guide spacing along Y (mm) for Gordon:",
+                default,
+                0.1,
+                500.0,
+                2,
+            )
+            if not ok:
+                return None
+            val = float(val)
+            if val <= 0:
+                App.Console.PrintWarning(
+                    "PointsToSurface: Y step must be positive; using %g mm.\n" % Y_STEP_MM
+                )
+                val = float(Y_STEP_MM)
+            pg.SetFloat("YStep", val)
+            return val
+    except Exception:
+        pass
+    return default
 
 
 def _active_body(doc, create_if_missing=False):
@@ -86,21 +155,38 @@ def _pick_points_object(doc):
     for o in sel:
         if o is None:
             continue
-        if "Points" in getattr(o, "TypeId", "") or (
+        tid = getattr(o, "TypeId", "")
+        if "Points" not in tid and not (
             hasattr(o, "Points") and _extract_points(o)
         ):
-            return o
-    for name in (
-        "points_40x40_grid",
-        "points_grid",
-        "Points",
-    ):
-        cand = doc.getObject(name)
-        if cand is not None and _extract_points(cand):
-            return cand
-    for obj in doc.Objects:
-        if "Points" in getattr(obj, "TypeId", "") and _extract_points(obj):
-            return obj
+            continue
+        if not _extract_points(o):
+            continue
+        return o
+
+    point_feats = []
+    for o in doc.Objects:
+        if "Points" not in getattr(o, "TypeId", ""):
+            continue
+        if _extract_points(o):
+            point_feats.append(o)
+
+    if len(point_feats) == 1:
+        o = point_feats[0]
+        App.Console.PrintMessage(
+            "PointsToSurface: nothing selected — using sole point cloud %s.\n"
+            % (getattr(o, "Label", None) or o.Name,)
+        )
+        return o
+    if len(point_feats) > 1:
+        App.Console.PrintError(
+            "PointsToSurface: select one point cloud in the tree (%d in document).\n"
+            % (len(point_feats),)
+        )
+        return None
+    App.Console.PrintError(
+        "PointsToSurface: no point cloud — import .asc (Points workbench) and select it.\n"
+    )
     return None
 
 
@@ -165,30 +251,162 @@ def _profile_edge(sk):
     return eds[0]
 
 
-def _point_on_edge_at_y(edge, y_target):
+def _dedupe_consecutive_vectors(pts, tol_mm=0.02):
+    if not pts:
+        return pts
+    out = [pts[0]]
+    for p in pts[1:]:
+        if (p - out[-1]).Length > tol_mm:
+            out.append(p)
+    return out
+
+
+def _dedupe_slice_cloud_points(pts):
+    """Remove consecutive (y,z) duplicates before fitting slice B-splines."""
+    if not pts:
+        return pts
+    out = [pts[0]]
+    for p in pts[1:]:
+        q = out[-1]
+        dy = abs(p.y - q.y)
+        dz = abs(p.z - q.z)
+        if dy > 1e-4 or dz > 1e-4:
+            out.append(p)
+    return out
+
+
+def _common_y_interval_all_edges(sks):
+    """Y range for guide stations.
+
+    Strict overlap is max(ymins)..min(ymaxs) (every profile contains the interval).
+    If one thin slice has a tiny Y span, that alone collapses the interval and Gordon
+    guides only cover a narrow band (and Curves may miss intersections / crash).
+    When overlap is much narrower than the combined slice span, use the full combined
+    span instead; out-of-range Y then uses the chord between profile parametric ends.
+    """
+    ymins = []
+    ymaxs = []
+    for sk in sks:
+        e = _profile_edge(sk)
+        if e is None:
+            return None
+        bb = e.BoundBox
+        ymins.append(bb.YMin)
+        ymaxs.append(bb.YMax)
+    y0 = max(ymins)
+    y1 = min(ymaxs)
+    span_inter = y1 - y0
+    y_lo = min(ymins)
+    y_hi = max(ymaxs)
+    span_union = y_hi - y_lo
+    if span_inter < Y_TOL_MM * 10.0:
+        return None
+    if span_union > 1e-6 and span_inter < 0.30 * span_union:
+        App.Console.PrintWarning(
+            "PointsToSurface: strict per-slice Y overlap %.4g..%.4g (width %.4g mm) is "
+            "much smaller than combined span %.4g..%.4g (width %.4g mm). "
+            "Using the combined span for guide stations so Gordon covers the terrain; "
+            "slices with short Y extent will clamp at their Y ends.\n"
+            % (y0, y1, span_inter, y_lo, y_hi, span_union)
+        )
+        return y_lo, y_hi
+    return y0, y1
+
+
+def _edge_y_min_max_points(edge):
+    """Approximate points of minimum and maximum Y along the edge (for chord / rails)."""
     c = edge.Curve
     ta = edge.FirstParameter
     tb = edge.LastParameter
-    pa = c.value(ta)
-    pb = c.value(tb)
-    ymin = min(pa.y, pb.y)
-    ymax = max(pa.y, pb.y)
-    if ymax - ymin < Y_TOL_MM:
-        return App.Vector(pa.x, y_target, 0.5 * (pa.z + pb.z))
+    n = 96
+    best_lo = c.value(ta)
+    best_hi = c.value(ta)
+    ymin = best_lo.y
+    ymax = best_hi.y
+    for i in range(n):
+        t = ta + (tb - ta) * i / (n - 1)
+        p = c.value(t)
+        if p.y < ymin:
+            ymin = p.y
+            best_lo = p
+        if p.y > ymax:
+            ymax = p.y
+            best_hi = p
+    return best_lo, best_hi
+
+
+def _point_on_endpoint_chord_at_y(pa, pb, y_target):
+    """Point in the slice plane on the infinite line through pa–pb (Y = y_target)."""
+    dy = pb.y - pa.y
+    if abs(dy) < Y_TOL_MM:
+        return App.Vector(
+            0.5 * (pa.x + pb.x),
+            y_target,
+            0.5 * (pa.z + pb.z),
+        )
+    t = (y_target - pa.y) / dy
+    return App.Vector(
+        pa.x + t * (pb.x - pa.x),
+        pa.y + t * (pb.y - pa.y),
+        pa.z + t * (pb.z - pa.z),
+    )
+
+
+def _point_on_edge_interior_at_y(edge, y_use):
+    """Point on edge where Y ~= y_use; y_use must lie within edge.BoundBox Y range."""
+    c = edge.Curve
+    ta = edge.FirstParameter
+    tb = edge.LastParameter
+    n = 64
+    ts = [ta + (tb - ta) * i / (n - 1) for i in range(n)]
+    for i in range(n - 1):
+        t0, t1 = ts[i], ts[i + 1]
+        y0 = c.value(t0).y
+        y1 = c.value(t1).y
+        if (y0 - y_use) * (y1 - y_use) <= 0:
+            for _ in range(48):
+                tm = 0.5 * (t0 + t1)
+                ym = c.value(tm).y
+                if abs(ym - y_use) < Y_TOL_MM * 10.0:
+                    return c.value(tm)
+                if (y0 - y_use) * (ym - y_use) <= 0:
+                    t1, y1 = tm, ym
+                else:
+                    t0, y0 = tm, ym
+            return c.value(0.5 * (t0 + t1))
+    best_t = ta
+    best_e = 1e300
+    for t in ts:
+        e = abs(c.value(t).y - y_use)
+        if e < best_e:
+            best_e = e
+            best_t = t
+    return c.value(best_t)
+
+
+def _guide_point_for_slice(edge, y_target, y_mm_cache=None):
+    """Guide sample at this slice: on the profile at Y when possible; else on the Y-min–Y-max chord.
+
+    y_mm_cache: optional dict edge id -> (p_y_min, p_y_max) from _edge_y_min_max_points.
+    """
+    bb = edge.BoundBox
+    ymin = bb.YMin
+    ymax = bb.YMax
+    span = ymax - ymin
+    tol = max(Y_TOL_MM * 10.0, 1e-6 * max(abs(ymin), abs(ymax), 1.0))
+    eid = id(edge)
+    if y_mm_cache is not None and eid in y_mm_cache:
+        pa, pb = y_mm_cache[eid]
+    else:
+        pa, pb = _edge_y_min_max_points(edge)
+        if y_mm_cache is not None:
+            y_mm_cache[eid] = (pa, pb)
+    if span < Y_TOL_MM * 10.0:
+        return _point_on_endpoint_chord_at_y(pa, pb, y_target)
+    if y_target < ymin - tol or y_target > ymax + tol:
+        return _point_on_endpoint_chord_at_y(pa, pb, y_target)
     y_use = max(ymin, min(ymax, y_target))
-    if pa.y > pb.y:
-        ta, tb = tb, ta
-        pa, pb = pb, pa
-    for _ in range(80):
-        tm = 0.5 * (ta + tb)
-        ym = c.value(tm).y
-        if abs(ym - y_use) < Y_TOL_MM:
-            return c.value(tm)
-        if ym < y_use:
-            ta = tm
-        else:
-            tb = tm
-    return c.value(0.5 * (ta + tb))
+    return _point_on_edge_interior_at_y(edge, y_use)
 
 
 def _y_stations(y0, y1, step=None):
@@ -269,32 +487,97 @@ def _build_profile_edges(sketches):
     return edges
 
 
+def _mild_bspline_edge(edge):
+    """Re-sample edge and interpolate; reduces kinks that make Curves reparam return None."""
+    if edge is None or edge.Length < 1e-8:
+        return None
+    try:
+        c = edge.Curve
+        ta = edge.FirstParameter
+        tb = edge.LastParameter
+        n = max(16, min(96, int(edge.Length / 2.5) + 8))
+        pts = [c.value(ta + (tb - ta) * i / (n - 1)) for i in range(n)]
+        pts = _dedupe_consecutive_vectors(pts, tol_mm=0.02)
+        if len(pts) < 2:
+            return edge
+        bs = Part.BSplineCurve()
+        bs.interpolate(pts, False)
+        ge = _to_single_guide_edge(bs.toShape())
+        return ge if (ge is not None and ge.Length >= 1e-6) else edge
+    except Exception:
+        return edge
+
+
+def _to_single_guide_edge(sh):
+    """Curves gordonFP uses Sources[0].Shape.Edges — one edge per guide, or Gordon breaks."""
+    if sh is None or sh.isNull():
+        return None
+    eds = sh.Edges
+    if len(eds) == 1:
+        return eds[0]
+    if not eds:
+        return None
+    w = Part.Wire(eds)
+    try:
+        apx = w.approximate(1e-6, 1e-4, 25, 999)
+        sh2 = apx.toShape()
+        if sh2.Edges:
+            return sh2.Edges[0]
+    except Exception:
+        pass
+    try:
+        v0 = w.Vertexes[0].Point
+        v1 = w.Vertexes[-1].Point
+        if v0.distanceToPoint(v1) < 1e-8:
+            return None
+        return Part.makeLine(v0, v1)
+    except Exception:
+        return None
+
+
 def _build_guide_shapes(sketches, y_step):
     sks = _sorted_slice_sketches(sketches)
     if len(sks) < 2:
         return []
-    bb = sks[0].Shape.BoundBox
-    for sk in sks[1:]:
-        bb.add(sk.Shape.BoundBox)
-    y0 = bb.YMin
-    y1 = bb.YMax
+    common = _common_y_interval_all_edges(sks)
+    if common is not None:
+        y0, y1 = common
+    else:
+        bb = sks[0].Shape.BoundBox
+        for sk in sks[1:]:
+            bb.add(sk.Shape.BoundBox)
+        y0 = bb.YMin
+        y1 = bb.YMax
+        App.Console.PrintWarning(
+            "PointsToSurface: slice Y ranges barely overlap — guides use full Y span; "
+            "Gordon may be unstable. Prefer denser points per slice on shared Y extent.\n"
+        )
     stations = _y_stations(y0, y1, float(y_step))
     shapes = []
+    y_mm_cache = {}
     for y in stations:
         pts = []
         for sk in sks:
             edge = _profile_edge(sk)
             if edge is None:
                 return []
-            pts.append(_point_on_edge_at_y(edge, y))
+            pts.append(_guide_point_for_slice(edge, y, y_mm_cache))
+        pts = _dedupe_consecutive_vectors(pts, tol_mm=0.05)
         if len(pts) < 2:
             continue
         try:
             bs = Part.BSplineCurve()
             bs.interpolate(pts, False)
-            shapes.append(bs.toShape())
+            sh = bs.toShape()
         except Exception:
-            shapes.append(Part.makePolygon(pts))
+            sh = Part.makePolygon(pts)
+        ge = _to_single_guide_edge(sh)
+        if ge is None or ge.Length < 1e-6:
+            continue
+        ge = _mild_bspline_edge(ge)
+        if ge is None or ge.Length < 1e-6:
+            continue
+        shapes.append(ge)
     return shapes
 
 
@@ -379,9 +662,6 @@ class _DriverVP:
 def _run_cross_sections(doc, body):
     points_obj = _pick_points_object(doc)
     if points_obj is None:
-        App.Console.PrintError(
-            "PointsToSurface: select a Points object or add a Points::Feature.\n"
-        )
         return False
 
     vecs = _extract_points(points_obj)
@@ -392,8 +672,13 @@ def _run_cross_sections(doc, body):
     doc.recompute()
     groups = _group_by_x(vecs)
     created = 0
+    skipped_single = 0
     for _xkey, pts in groups:
-        pts_sorted = sorted(pts, key=lambda p: (p.y, p.z))
+        pts_sorted = _dedupe_slice_cloud_points(sorted(pts, key=lambda p: (p.y, p.z)))
+        if len(pts_sorted) < 2:
+            skipped_single += 1
+            continue
+
         slice_x = sum(p.x for p in pts_sorted) / len(pts_sorted)
         tag = "X%05d" % int(round(slice_x))
 
@@ -424,8 +709,6 @@ def _run_cross_sections(doc, body):
             loc = inv.multVec(g)
             pts2d.append(App.Vector(loc.x, loc.y, 0.0))
 
-        if len(pts2d) < 2:
-            continue
         if len(pts2d) == 2:
             sketch.addGeometry(Part.LineSegment(pts2d[0], pts2d[1]), False)
         else:
@@ -453,10 +736,15 @@ def _run_cross_sections(doc, body):
         "PointsToSurface: created %d slice(s) on %s.\n"
         % (created, body.Label)
     )
+    if skipped_single:
+        App.Console.PrintMessage(
+            "PointsToSurface: skipped %d X-group(s) with only one point (no sketch).\n"
+            % (skipped_single,)
+        )
     return True
 
 
-def _run_gordon_surface(doc, body):
+def _run_gordon_surface(doc, body, y_step_mm):
     sketches = _slice_sketches(doc, body)
     if len(sketches) < 2:
         App.Console.PrintError(
@@ -488,18 +776,22 @@ def _run_gordon_surface(doc, body):
             return False
 
     prof_edges = _build_profile_edges(sketches)
-    guide_shapes = _build_guide_shapes(sketches, Y_STEP_MM)
+    guide_shapes = _build_guide_shapes(sketches, float(y_step_mm))
     if len(prof_edges) < 2 or len(guide_shapes) < 2:
         App.Console.PrintError(
             "PointsToSurface: need at least two profiles and two guides.\n"
         )
         return False
 
-    bb = sketches[0].Shape.BoundBox
-    for sk in sketches[1:]:
-        bb.add(sk.Shape.BoundBox)
-    y0 = bb.YMin
-    y1 = bb.YMax
+    common = _common_y_interval_all_edges(_sorted_slice_sketches(sketches))
+    if common is not None:
+        y0, y1 = common
+    else:
+        bb = sketches[0].Shape.BoundBox
+        for sk in sketches[1:]:
+            bb.add(sk.Shape.BoundBox)
+        y0 = bb.YMin
+        y1 = bb.YMax
 
     gname = "GordonSurface_Guides"
     pname = "GordonSurface_Profiles"
@@ -520,6 +812,14 @@ def _run_gordon_surface(doc, body):
     gordon = doc.addObject("Part::FeaturePython", gordname)
     gordon_fp_cls(gordon)
     gordon_vp_cls(gordon.ViewObject)
+    if hasattr(gordon, "Tol3D"):
+        gordon.Tol3D = max(float(getattr(gordon, "Tol3D", 0.01) or 0.01), 1.0)
+    if hasattr(gordon, "Tol2D"):
+        gordon.Tol2D = max(float(getattr(gordon, "Tol2D", 0.0) or 0.0), 1e-4)
+    if hasattr(gordon, "MaxCtrlPts"):
+        n_p = len(sketches)
+        n_g = len(guide_shapes)
+        gordon.MaxCtrlPts = min(100, max(28, max(n_p, n_g) * 3 + 12))
 
     sks_sorted = _sorted_slice_sketches(sketches)
     anchor = sks_sorted[-1] if sks_sorted else None
@@ -531,7 +831,7 @@ def _run_gordon_surface(doc, body):
             return False
 
     guides_obj.SliceSketches = sketches
-    guides_obj.YStep = float(Y_STEP_MM)
+    guides_obj.YStep = float(y_step_mm)
     profiles_obj.SliceSketches = sketches
     gordon.Sources = [guides_obj, profiles_obj]
     doc.recompute()
@@ -548,7 +848,7 @@ def _run_gordon_surface(doc, body):
         % (
             len(prof_edges),
             len(guide_shapes),
-            Y_STEP_MM,
+            float(y_step_mm),
             y0,
             y1,
             gordon.Name,
@@ -576,9 +876,13 @@ def main():
         )
         return
 
+    y_step = _resolve_y_step_mm()
+    if y_step is None:
+        App.Console.PrintMessage("PointsToSurface: cancelled (Y step).\n")
+        return
     if not _run_cross_sections(doc, body):
         return
-    if not _run_gordon_surface(doc, body):
+    if not _run_gordon_surface(doc, body, y_step):
         return
 
 
