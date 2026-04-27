@@ -1,6 +1,10 @@
-fp-info-cache
-*.FCBak
 .DS_Store
-pcb/encoders-backups
 *.step
 *.3mf
+
+# pcb/: only KiCad project, schematic, and board (not gerbers, backups, fp-info-cache, .kicad_prl, …)
+pcb/**
+!pcb/**/
+!pcb/**/*.kicad_pro
+!pcb/**/*.kicad_sch
+!pcb/**/*.kicad_pcb
