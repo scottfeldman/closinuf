@@ -20,7 +20,8 @@
 | Z    | 5 / 11         |
 
 - Encoders: **600 PPR** quadrature (2400 counts/rev) and **50 mm** wheel diameter match the defaults in `main.go`; change constants there if your hardware differs.  Code assumes external 4.7K pull-up resistors for encoder inputs.
-- **Foot / capture switch**: GPIO **17**, normally‑open, pulled **high** (e.g. 4.7 kΩ to 3.3 V).
+- Full board schematic, BOM, and pinout: see [HARDWARE.md](HARDWARE.md).
+- **Foot / capture switch**: GPIO **26**, normally‑open, pulled **high** (e.g. 4.7 kΩ to 3.3 V).
 
 ## Install on the Pi (`install.sh`)
 

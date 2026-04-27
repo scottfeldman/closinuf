@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -36,7 +37,19 @@ const (
 	countsPerRev       = 2400.0                  // 600 PPR × 4 (full quadrature)
 	wheelDiameter      = 50.0                    // wheel diameter in mm
 	wheelCircumference = math.Pi * wheelDiameter // ≈ 157.08mm
+	// encoderPollInterval: sampling all four encoders each period. Faster motion
+	// needs a shorter interval so A/B never change two quadrature steps between reads
+	// (which would look like an invalid transition and drop counts). ~12.5 kHz loop.
+	encoderPollInterval = 1 * time.Microsecond
 )
+
+// Quadrature transition table: +1 = CW, -1 = CCW, 0 = no change / illegal 2-bit jump
+var quadDeltaTable = [16]int{
+	0, -1, +1, 0,
+	+1, 0, 0, -1,
+	-1, 0, 0, +1,
+	0, +1, -1, 0,
+}
 
 type EncoderData struct {
 	X  EncoderValues `json:"x"`
@@ -67,6 +80,34 @@ var (
 	btnPressHandled    bool // Track if we've already handled the current press
 )
 
+func pollEncodersForever() {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	for {
+		for _, enc := range encoders {
+			if enc == nil || enc.lines == nil {
+				continue
+			}
+			values := make([]int, 2)
+			if err := enc.lines.Values(values); err != nil {
+				continue
+			}
+			current := uint8((values[0] << 1) | values[1])
+			enc.mu.Lock()
+			if current != enc.lastState {
+				idx := int(enc.lastState)<<2 | int(current)
+				delta := quadDeltaTable[idx]
+				if delta != 0 {
+					enc.counter += delta
+				}
+				enc.lastState = current
+			}
+			enc.mu.Unlock()
+		}
+		time.Sleep(encoderPollInterval)
+	}
+}
+
 func main() {
 	const (
 		chipName = "gpiochip0"
@@ -80,16 +121,8 @@ func main() {
 		yOffsetB       = 10 // GPIO10
 		zOffsetA       = 5  // GPIO5
 		zOffsetB       = 11 // GPIO11
-		pointBtnOffset = 17 // GPIO17 - physical button for adding points (NO contact)
+		pointBtnOffset = 26 // GPIO26 - physical button for adding points (NO contact)
 	)
-
-	// Quadrature table: +1 = CW, -1 = CCW, 0 = no/invalid change
-	deltaTable := [16]int{
-		0, -1, +1, 0,
-		+1, 0, 0, -1,
-		-1, 0, 0, +1,
-		0, +1, -1, 0,
-	}
 
 	// Initialize encoders
 	encoders[0] = &Encoder{label: "X"}  // X encoder
@@ -117,41 +150,26 @@ func main() {
 		enc.lastReadCount = enc.counter
 		enc.mu.Unlock()
 
-		handler := func(evt gpiocdev.LineEvent) {
-			values := make([]int, 2)
-			if err := enc.lines.Values(values); err != nil {
-				return
-			}
-
-			currentState := uint8((values[0] << 1) | values[1])
-
-			enc.mu.Lock()
-			if currentState != enc.lastState {
-				idx := int(enc.lastState)<<2 | int(currentState)
-				delta := deltaTable[idx]
-
-				if delta != 0 {
-					enc.counter += delta
-				}
-
-				enc.lastState = currentState
-			}
-			enc.mu.Unlock()
-		}
-
 		var err error
 		enc.lines, err = gpiocdev.RequestLines(chipName,
 			[]int{cfg.offsetA, cfg.offsetB},
 			gpiocdev.AsInput,
-			gpiocdev.WithEventHandler(handler),
-			gpiocdev.WithBothEdges,
 			gpiocdev.WithConsumer("rotary-encoder-"+cfg.label),
 		)
 		if err != nil {
 			// If GPIO fails, continue anyway (for development/testing)
 			// In production, you might want to exit or handle differently
+			continue
+		}
+		values := make([]int, 2)
+		if err := enc.lines.Values(values); err == nil {
+			enc.mu.Lock()
+			enc.lastState = uint8((values[0] << 1) | values[1])
+			enc.mu.Unlock()
 		}
 	}
+
+	go pollEncodersForever()
 
 	// Setup GPIO for physical Point button
 	pointBtnHandler := func(evt gpiocdev.LineEvent) {
