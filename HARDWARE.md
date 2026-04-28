@@ -1,7 +1,9 @@
 # closinuf — Hardware Design
 
 This document captures the **encoder counter board** that sits between the four
-quadrature encoders and the Raspberry Pi. Counting is done in hardware by two
+quadrature encoders and the Raspberry Pi. The board is a **Raspberry Pi 4 HAT**:
+it stacks directly onto the Pi's 40‑pin GPIO header via `J1` and takes all of
+its power from that header (3.3 V and 5 V). Counting is done in hardware by two
 **LS7466** dual‑axis 24‑bit quadrature counter ICs, read by the Pi over **SPI0**.
 
 The PCB sources for this design live in [`pcb/`](pcb/). This file is the
@@ -46,23 +48,26 @@ For this machine that's vastly more headroom than needed.
 
 ## 2. Bill of materials
 
-| Ref          | Qty | Part                                  | Suggested MPN                  | Notes |
-|--------------|-----|---------------------------------------|--------------------------------|-------|
-| U1, U2       | 2   | **LS7466-S** (SOIC‑16)                | `LS7466-S`                     | Dual‑axis 24‑bit quadrature counter. SOIC‑16 narrow body, 1.27 mm pitch. KiCad footprint: `Package_SO:SOIC-16_3.9x9.9mm_P1.27mm`. |
-| C1, C2       | 2   | 0.1 µF, X7R, 25 V, 0603, ±10 %        | Murata `GRM188R71E104KA01D`    | Decoupling, **at pin 16** of each chip. |
-| C3           | 1   | 10 µF, X5R, 10 V, 0805, ±10 %         | Murata `GRM21BR61A106KE19L`    | Bulk on the 3.3 V rail. Use ≥10 V part to avoid DC‑bias derating loss at 3.3 V. |
-| R1–R8        | 8   | 4.7 kΩ, 1 %, 1/10 W, 0603             | Yageo `RC0603FR-074K7L`        | Pull‑ups on every encoder A and B (2 per axis × 4 axes). |
-| R9–R12       | 4   | (optional) 4.7 kΩ, 1 %, 1/10 W, 0603  | Yageo `RC0603FR-074K7L`        | Pull‑downs on each unused Z input. Or tie Z pins directly to GND. |
-| J1           | 1   | 2×20 0.1″ socket                      | Samtec `SSW-120-01-T-D` (or any 2×20 2.54 mm socket) | Pi GPIO header connector |
-| J2–J5        | 4   | 4‑pin headers (or screw terminals)    | —                              | Encoder cables (A, B, +3 V3, GND); add a 5th pin if you ever want index. |
-| J6           | 1   | 2‑pin header                          | —                              | Foot switch (GPIO 26 + GND). |
-| —            | —   | Optional: 4× (100 Ω + 1 nF)           | —                              | RC snubber on each A/B if encoder cables are long (>1 m). |
-| —            | —   | Optional: 1× 4.7 kΩ + 1 GPIO          | —                              | Pull‑up for wire‑OR’d `FLAG/` interrupt if you ever wire it. |
+| Ref       | Qty | Part                                  | Suggested MPN                  | KiCad footprint                                      | Notes |
+|-----------|-----|---------------------------------------|--------------------------------|------------------------------------------------------|-------|
+| U1, U2    | 2   | **LS7466‑S** (SOIC‑16)                | `LS7466-S`                     | `Package_SO:SOIC-16_3.9x9.9mm_P1.27mm`               | Dual‑axis 24‑bit quadrature counter. SOIC‑16 narrow body, 1.27 mm pitch. |
+| C1, C2    | 2   | 0.1 µF, X7R, 25 V, 0603, ±10 %        | Murata `GRM188R71E104KA01D`    | `Capacitor_SMD:C_0603_1608Metric`                    | Decoupling, **at pin 16** of each chip. |
+| C3        | 1   | 10 µF, X5R, 10 V, 0805, ±10 %         | Murata `GRM21BR61A106KE19L`    | `Capacitor_SMD:C_0805_2012Metric`                    | Bulk on the 3.3 V rail. Use ≥10 V part to avoid DC‑bias derating loss at 3.3 V. |
+| R1        | 1   | 4.7 kΩ, 1 %, 1/10 W, 0603             | Yageo `RC0603FR-074K7L`        | `Resistor_SMD:R_0603_1608Metric`                     | Foot‑switch pull‑up to 3.3 V. |
+| R2–R9     | 8   | 4.7 kΩ, 1 %, 1/10 W, 0603             | Yageo `RC0603FR-074K7L`        | `Resistor_SMD:R_0603_1608Metric`                     | Pull‑ups on every encoder A and B (2 per encoder × 4 encoders). |
+| J1        | 1   | 2×20 0.1″ socket                      | Samtec `SSW-120-01-T-D` (or any 2×20 2.54 mm socket) | `Connector_PinSocket_2.54mm:PinSocket_2x20_P2.54mm_Vertical` | Pi GPIO header connector. |
+| J2        | 1   | 4‑pos PCB terminal block, 5 mm pitch, horizontal entry | Phoenix Contact `PT 1,5/ 4-5,0-H` (1935284) | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_PT-1,5-4-5.0-H_1x04_P5.00mm_Horizontal` | Foot switch — only 2 of the 4 positions are wired (GPIO 26 + GND). |
+| J3–J6     | 4   | 4‑pos PCB terminal block, 5 mm pitch, horizontal entry | Phoenix Contact `PT 1,5/ 4-5,0-H` (1935284) | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_PT-1,5-4-5.0-H_1x04_P5.00mm_Horizontal` | Encoder cables (X, X′, Y, Z). Each carries A, B, **+5 V**, GND. |
+| —         | —   | Optional: 4× (100 Ω + 1 nF)           | —                              | —                                                    | RC snubber on each A/B if encoder cables are long (>1 m). |
+| —         | —   | Optional: 1× 4.7 kΩ + 1 GPIO          | —                              | —                                                    | Pull‑up for wire‑OR’d `FLAG/` interrupt if you ever wire it. |
 
 All passives are surface‑mount: caps and resistors in 0603 (with `C3` in 0805 for
 better DC‑bias performance). MPNs above are stocked at Digi‑Key / Mouser / LCSC
 and are interchangeable with the equivalent parts from Kemet, Panasonic, Vishay,
-TDK, Samsung, or Yageo at the same package and dielectric.
+TDK, Samsung, or Yageo at the same package and dielectric. The KiCad footprints
+in the table are the standard parts shipped with KiCad's stock libraries; the
+schematic in `pcb/encoder.kicad_sch` already has them assigned for every
+component (U1, U2, C1–C3, R1–R9, J1–J6).
 
 ---
 
@@ -77,16 +82,22 @@ TDK, Samsung, or Yageo at the same package and dielectric.
 | SPI0 SCLK                    | GPIO 11        | 23         |
 | SPI0 CE0  → U1 SS/  (X, X′)  | GPIO 8         | 24         |
 | SPI0 CE1  → U2 SS/  (Y,  Z)  | GPIO 7         | 26         |
-| **Foot switch**              | GPIO 26        | 37         |
-| 3.3 V supply                 | —              | 1, 17      |
+| **Foot switch** (`J2`)       | GPIO 26        | 37         |
+| 3.3 V supply (LS7466 VDD)    | —              | 1, 17      |
+| 5 V supply (encoder modules) | —              | 2, 4       |
 | GND                          | —              | 6, 9, 14, 20, 25, 30, 34, 39 |
 
 Notes:
 
 - SPI1 is **not used**. With LS7466 the four encoders fit on two chips on a
   single bus.
-- The board pulls **all power from the Pi's 3.3 V rail**. Two LS7466s plus a
-  dozen pull‑ups draw under 5 mA total — negligible.
+- LS7466 chips, the pull‑up resistors, and the foot‑switch network all run
+  from the Pi's **3.3 V** rail (header pins 1 / 17). The four encoder modules
+  run from the Pi's **5 V** rail (header pins 2 / 4); their open‑collector
+  A/B outputs are pulled up to 3.3 V at the LS7466 end so signal levels stay
+  inside the chip's input range. Two LS7466s plus the pull‑ups draw under
+  5 mA from 3.3 V; encoder current is dominated by the encoder modules
+  themselves (typically tens of mA each — check your encoder spec).
 - If you ever want bus isolation between the X/X′ pair and the Y/Z pair, you
   can move U2 to SPI1 CE0 (GPIO 18) and add `dtoverlay=spi1-2cs`. The single‑bus
   layout below is recommended.
@@ -215,13 +226,18 @@ count := int32(raw)
 
 ## 5. Encoders
 
-Each encoder is connected via a 4‑pin cable: **A**, **B**, **+3.3 V**, **GND**.
-The board provides 4.7 kΩ pull‑ups on A and B (the existing encoders are
-NPN open‑collector). Encoder Z (index) is not used; the corresponding `Zx`/`Zy`
-pin on the chip is tied to GND and disabled in `MCR0`. If you ever want to
-add index/homing later, lift the GND tie, add a pull‑up to 3.3 V, and route
-the encoder Z to that pin — then reprogram `MCR0` to one of the index modes
-(e.g. `RCNT` to reset `CNTR` on Z).
+Each encoder is connected via a 4‑pin cable: **A**, **B**, **+5 V**, **GND**,
+landed on a 4‑position screw terminal (`J3` = X, `J4` = X′, `J5` = Y, `J6` = Z).
+The encoder modules themselves run from the Pi's **+5 V** rail (header pin 2 or 4);
+their A/B outputs are NPN open‑collector and are pulled up to **3.3 V** at the
+LS7466 end by `R2`–`R9`, so the signal seen by the chip is a clean 3.3 V CMOS
+level — never above the LS7466's `VDD`.
+
+Encoder Z (index) is not used; the corresponding `Zx` / `Zy` pin on the chip
+is tied to GND and disabled in `MCR0`. If you ever want to add index/homing
+later, lift the GND tie, add a pull‑up to 3.3 V, and route the encoder Z to
+that pin — then reprogram `MCR0` to one of the index modes (e.g. `RCNT` to
+reset `CNTR` on Z).
 
 Per the firmware defaults (`main.go`): 600 PPR, x4 quadrature → 2400
 counts/rev; 50 mm wheel diameter, ≈157.08 mm/rev, ≈0.0654 mm/count.
@@ -233,9 +249,11 @@ The LS7466's max quadrature input rate at 3.3 V is **1.3 MHz**, which at
 
 ## 6. Foot switch
 
+Connector **J2** (4‑pos screw terminal, 2 of the 4 positions wired):
+
 | Net      | Connection                                       |
 |----------|--------------------------------------------------|
-| Switch.1 | GPIO 26 (header pin 37), 4.7 kΩ pull‑up to 3.3 V |
+| Switch.1 | GPIO 26 (header pin 37), 4.7 kΩ pull‑up (`R1`) to 3.3 V |
 | Switch.2 | GND (header pin 39)                              |
 
 Normally open, momentary. Software treats falling edge as "capture point",
@@ -248,41 +266,43 @@ with debounce and ≥500 ms minimum spacing in firmware.
 ```
                            Raspberry Pi 40-pin header (J1)
    ┌───────────────────────────────────────────────────────────────────┐
-   │ +3V3 (pin 1, 17)  ─────────────►  VDD rail  ─────► U1, U2 pin 16
-   │                                                  └─► all 4k7 pull-ups
-   │                                                  └─► CEx (pin 9), CEy (pin 14)
-   │ GND  (pin 6,9,...)─────────────►  GND rail  ─────► U1, U2 pin 8
-   │                                                  └─► Zx (pin 7), Zy (pin 13)
-   │                                                  └─► foot switch
+   │ +3V3 (pin 1, 17) ──────────────► +3V3 rail ────► U1, U2 pin 16
+   │                                                └─► all 4k7 pull-ups (R1..R9)
+   │                                                └─► CEx (pin 9), CEy (pin 14)
+   │ +5V  (pin 2, 4)  ──────────────► +5V rail  ────► J3..J6 (encoder modules)
+   │ GND  (pin 6,9,...)─────────────► GND rail  ────► U1, U2 pin 8
+   │                                                └─► Zx (pin 7), Zy (pin 13)
+   │                                                └─► J2 foot switch
+   │                                                └─► J3..J6 encoder GND
    │
    │ ── SPI0 ─────────────────────────────────────────────────────────── │
-   │ GPIO10 (pin 19) MOSI  ───►  U1 pin 4,  U2 pin 4
-   │ GPIO9  (pin 21) MISO  ◄───  U1 pin 3,  U2 pin 3
-   │ GPIO11 (pin 23) SCLK  ───►  U1 pin 2,  U2 pin 2
-   │ GPIO8  (pin 24) CE0   ───►  U1 pin 1   (X, X')
-   │ GPIO7  (pin 26) CE1   ───►  U2 pin 1   (Y,  Z)
+   │ GPIO10 (pin 19) MOSI ─────►  U1 pin 4,  U2 pin 4
+   │ GPIO9  (pin 21) MISO ◄─────  U1 pin 3,  U2 pin 3
+   │ GPIO11 (pin 23) SCLK ─────►  U1 pin 2,  U2 pin 2
+   │ GPIO8  (pin 24) CE0  ─────►  U1 pin 1   (X, X')
+   │ GPIO7  (pin 26) CE1  ─────►  U2 pin 1   (Y,  Z)
    │
-   │ GPIO26 (pin 37) ◄── foot switch ── GND (pin 39); 4.7kΩ to 3.3V
+   │ GPIO26 (pin 37) ◄── J2 foot switch ── GND;  R1=4.7kΩ to +3V3
    └────────────────────────────────────────────────────────────────────┘
 
   Each LS7466 (Ux), identical wiring on both:
 
                           +3.3 V
                             │
-                ┌───────────┼───────────┬──────────┐
-              [4k7]       [4k7]       [4k7]      [4k7]
-                │           │           │          │
-   Encoder.A  ──┴──► pin 5  │           │          │           (axis-x A)
-   Encoder.B  ─────► pin 6  │           │          │           (axis-x B)
-                            │           │          │
-   Encoder'.A ──────────────┴──► pin 11 │          │           (axis-y A)
-   Encoder'.B ─────────────────► pin 12 │          │           (axis-y B)
-                                        │          │
+                ┌───────────┼───────────┐
+              [4k7]       [4k7]         │
+                │           │           │
+   Encoder.A  ──┴──► pin 5  │           │           (axis-x A)
+   Encoder.B  ─────► pin 6  │           │           (axis-x B)
+                            │           │
+   Encoder'.A ──────────────┴──► pin 11 │           (axis-y A)
+   Encoder'.B ─────────────────► pin 12 │           (axis-y B)
+                                        │
                             +3.3V ──────┴── pin 9  (CEx)
                             +3.3V ────────── pin 14 (CEy)
                             +3.3V ──┬─────── pin 16 (VDD)
                                     │
-                                 [0.1µF]    ◄── decoupling, at pin 16
+                                 [0.1µF]    ◄── decoupling (C1 / C2), at pin 16
                                     │
                                    GND
                                     │
@@ -296,6 +316,8 @@ with debounce and ≥500 ms minimum spacing in firmware.
    Pin 4  (MOSI)  : SPI0 MOSI (shared)
    Pin 10 (FLAGx/): NC
    Pin 15 (FLAGy/): NC
+
+  +3V3 rail also carries C3 (10 µF bulk) to GND, placed near J1.
 ```
 
 ---
