@@ -58,14 +58,14 @@ this application needs.
 
 | Ref       | Qty | Part                                  | Suggested MPN                  | KiCad footprint                                      | Notes |
 |-----------|-----|---------------------------------------|--------------------------------|------------------------------------------------------|-------|
-| U1–U4     | 4   | **LS7366R‑S** (SOIC‑14)               | `LS7366R-S`                    | `Package_SO:SOIC-14_3.9x8.7mm_P1.27mm`               | Single‑channel 32‑bit quadrature counter with SPI. Listings often show **LS7366‑R** / **LS7366R** for the RoHS **DIP‑14** variant; use **‑S** for surface mount. |
+| U1–U4     | 4   | **LS7366‑R** (DIP‑14, through‑hole)   | `LS7366-R`                     | `LS7366R:DIP762W45P254L1917H533Q14`                  | Single‑channel 32‑bit quadrature counter with SPI (DIP package used on this board). |
 | C1–C4     | 4   | 0.1 µF, X7R, 25 V, 0603, ±10 %        | Murata `GRM188R71E104KA01D`    | `Capacitor_SMD:C_0603_1608Metric`                    | Decoupling, **at pin 14 (VDD)** of each chip. |
 | C5        | 1   | 10 µF, X5R, 10 V, 0805, ±10 %         | Murata `GRM21BR61A106KE19L`    | `Capacitor_SMD:C_0805_2012Metric`                    | Bulk on the 3.3 V rail. Use ≥10 V part to avoid DC‑bias derating loss at 3.3 V. |
-| R1        | 1   | 4.7 kΩ, 1 %, 1/10 W, 0603             | Yageo `RC0603FR-074K7L`        | `Resistor_SMD:R_0603_1608Metric`                     | Foot‑switch pull‑up to 3.3 V. |
-| R2–R9     | 8   | 4.7 kΩ, 1 %, 1/10 W, 0603             | Yageo `RC0603FR-074K7L`        | `Resistor_SMD:R_0603_1608Metric`                     | Pull‑ups on every encoder A and B (2 per encoder × 4 encoders). |
+| R9        | 1   | 4.7 kΩ, 1 %, 1/10 W, 0603             | Yageo `RC0603FR-074K7L`        | `Resistor_SMD:R_0603_1608Metric`                     | Foot‑switch pull‑up to 3.3 V. |
+| R1–R8     | 8   | 4.7 kΩ, 1 %, 1/10 W, 0603             | Yageo `RC0603FR-074K7L`        | `Resistor_SMD:R_0603_1608Metric`                     | Pull‑ups on every encoder A and B (2 per encoder × 4 encoders). |
 | J1        | 1   | 2×20 0.1″ socket                      | Samtec `SSW-120-01-T-D` (or any 2×20 2.54 mm socket) | `Connector_PinSocket_2.54mm:PinSocket_2x20_P2.54mm_Vertical` | Pi GPIO header connector. |
-| J2        | 1   | 4‑pos PCB terminal block, 5 mm pitch, horizontal entry | Phoenix Contact `PT 1,5/ 4-5,0-H` (1935284) | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_PT-1,5-4-5.0-H_1x04_P5.00mm_Horizontal` | Foot switch — only 2 of the 4 positions are wired (GPIO 26 + GND). |
-| J3–J6     | 4   | 4‑pos PCB terminal block, 5 mm pitch, horizontal entry | Phoenix Contact `PT 1,5/ 4-5,0-H` (1935284) | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_PT-1,5-4-5.0-H_1x04_P5.00mm_Horizontal` | Encoder cables (X, X′, Y, Z). Each carries A, B, **+5 V**, GND. |
+| J6        | 1   | 4‑pos PCB terminal block, 5 mm pitch, horizontal entry | Phoenix Contact `PT 1,5/ 4-5,0-H` (1935284) | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_PT-1,5-4-5.0-H_1x04_P5.00mm_Horizontal` | Foot switch — only 2 of the 4 positions are wired (GPIO 26 + GND). |
+| J2–J5     | 4   | 4‑pos PCB terminal block, 5 mm pitch, horizontal entry | Phoenix Contact `PT 1,5/ 4-5,0-H` (1935284) | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_PT-1,5-4-5.0-H_1x04_P5.00mm_Horizontal` | Encoder cables (X, X′, Y, Z). Each carries A, B, **+5 V**, GND. |
 | —         | —   | Optional: 4× (100 Ω + 1 nF)           | —                              | —                                                    | RC snubber on each A/B if encoder cables are long (>1 m). |
 | —         | —   | Optional: 1× 4.7 kΩ + 1 GPIO          | —                              | —                                                    | Pull‑up for wire‑OR’d `FLAG/` interrupt if you ever wire it. |
 
@@ -93,7 +93,7 @@ schematic in `pcb/encoder.kicad_sch` should assign them for every component
 | SS/ → U3 (encoder Y)         | GPIO 5         | 29         |
 | SS/ → U4 (encoder Z)         | GPIO 6         | 31         |
 | **GPCLK0** → all **fCKi**    | GPIO 4         | 7          |
-| **Foot switch** (`J2`)       | GPIO 26        | 37         |
+| **Foot switch** (`J6`)       | GPIO 26        | 37         |
 | 3.3 V supply (LS7366R VDD)   | —              | 1, 17      |
 | 5 V supply (encoder modules) | —              | 2, 4       |
 | GND                          | —              | 6, 9, 14, 20, 25, 30, 34, 39 |
@@ -247,7 +247,7 @@ count := int32(raw)
 ## 5. Encoders
 
 Each encoder is connected via a 4‑pin cable: **A**, **B**, **+5 V**, **GND**,
-landed on a 4‑position screw terminal (`J3` = X, `J4` = X′, `J5` = Y, `J6` = Z).
+landed on a 4‑position screw terminal (`J2` = X, `J3` = X′, `J4` = Y, `J5` = Z).
 The encoder modules themselves run from the Pi's **+5 V** rail (header pin 2 or 4);
 their A/B outputs are NPN open‑collector and are pulled up to **3.3 V** at the
 LS7366R end by `R2`–`R9`, so the signal seen by the chip is a clean 3.3 V CMOS
@@ -269,11 +269,11 @@ still far beyond anything this machine produces.
 
 ## 6. Foot switch
 
-Connector **J2** (4‑pos screw terminal, 2 of the 4 positions wired):
+Connector **J6** (4‑pos screw terminal, 2 of the 4 positions wired):
 
 | Net      | Connection                                       |
 |----------|--------------------------------------------------|
-| Switch.1 | GPIO 26 (header pin 37), 4.7 kΩ pull‑up (`R1`) to 3.3 V |
+| Switch.1 | GPIO 26 (header pin 37), 4.7 kΩ pull‑up (`R9`) to 3.3 V |
 | Switch.2 | GND (header pin 39)                              |
 
 Normally open, momentary. Software treats falling edge as "capture point",
@@ -289,10 +289,10 @@ with debounce and ≥500 ms minimum spacing in firmware.
    │ +3V3 (pin 1, 17) ──────────────► +3V3 rail ────► U1..U4 pin 14
    │                                                └─► all 4k7 pull-ups (R1..R9)
    │                                                └─► CNT_EN (pin 13), INDEX/ (pin 10)
-   │ +5V  (pin 2, 4)  ──────────────► +5V rail  ────► J3..J6 (encoder modules)
+   │ +5V  (pin 2, 4)  ──────────────► +5V rail  ────► J2..J5 (encoder modules)
    │ GND  (pin 6,9,...)─────────────► GND rail  ────► U1..U4 pin 3 (VSS)
-   │                                                └─► J2 foot switch
-   │                                                └─► J3..J6 encoder GND
+   │                                                └─► J6 foot switch
+   │                                                └─► J2..J5 encoder GND
    │
    │ ── SPI0 ─────────────────────────────────────────────────────────── │
    │ GPIO10 (pin 19) MOSI ─────►  U1..U4 pin 7
@@ -305,7 +305,7 @@ with debounce and ≥500 ms minimum spacing in firmware.
    │
    │ GPIO4  (pin 7)  GPCLK0 ───►  U1..U4 pin 2 (fCKi), shared
    │
-   │ GPIO26 (pin 37) ◄── J2 foot switch ── GND;  R1=4.7kΩ to +3V3
+   │ GPIO26 (pin 37) ◄── J6 foot switch ── GND;  R9=4.7kΩ to +3V3
    └────────────────────────────────────────────────────────────────────┘
 
   Each LS7366R (Ux): one encoder; pin 1 (fCKO) NC; pin 2 (fCKi) = shared GPCLK.

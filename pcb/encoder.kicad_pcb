@@ -7416,6 +7416,18 @@
 			(justify left bottom)
 		)
 	)
+	(gr_text "https://github.com/scottfeldman/closinuf"
+		(at 148.5 89 0)
+		(layer "B.SilkS")
+		(uuid "b2ee7e0e-56ec-4b9e-8234-ca845662a4b1")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+			(justify left bottom mirror)
+		)
+	)
 	(gr_text "USB"
 		(at 177.724 71.552 0)
 		(layer "Dwgs.User")
