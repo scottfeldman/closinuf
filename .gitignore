@@ -8,3 +8,5 @@ pcb/**
 !pcb/**/*.kicad_pro
 !pcb/**/*.kicad_sch
 !pcb/**/*.kicad_pcb
+!pcb/**/*.kicad_sym
+!pcb/**/sym-lib-table
