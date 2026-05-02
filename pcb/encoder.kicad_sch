@@ -5365,7 +5365,7 @@
 		(at 238.76 66.04 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "00000000-0000-0000-0000-000059ad464a")
@@ -5404,6 +5404,24 @@
 			)
 		)
 		(property "Description" "Generic connector, double row, 02x20, odd/even pin numbering scheme (row 1 odd numbers, row 2 even numbers), script generated (kicad-library-utils/schlib/autogen/connector/)"
+			(at 238.76 66.04 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" ""
+			(at 238.76 66.04 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" ""
 			(at 238.76 66.04 0)
 			(effects
 				(font
@@ -5921,6 +5939,24 @@
 				(hide yes)
 			)
 		)
+		(property "MPN" "GRM188R71E104KA01D"
+			(at 116.84 113.03 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "Murata"
+			(at 116.84 113.03 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "0808b745-11aa-4208-ac2d-09304244ff9c")
 		)
@@ -6007,7 +6043,7 @@
 		(at 179.07 137.16 180)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "2bf3c86a-c9ec-4f33-a614-ab9a6baea884")
@@ -6048,6 +6084,24 @@
 			)
 		)
 		(property "Description" "Generic screw terminal, single row, 01x04, script generated (kicad-library-utils/schlib/autogen/connector/)"
+			(at 179.07 137.16 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" ""
+			(at 179.07 137.16 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" ""
 			(at 179.07 137.16 0)
 			(effects
 				(font
@@ -6132,6 +6186,24 @@
 				(hide yes)
 			)
 		)
+		(property "MPN" "RC0603FR-074K7L"
+			(at 59.69 53.34 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "Yageo"
+			(at 59.69 53.34 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "d60ab4cf-ddc6-4595-945c-4c91b43335e5")
 		)
@@ -6194,6 +6266,24 @@
 			)
 		)
 		(property "Description" "Resistor, small US symbol"
+			(at 49.53 91.44 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "RC0603FR-074K7L"
+			(at 49.53 91.44 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "Yageo"
 			(at 49.53 91.44 0)
 			(effects
 				(font
@@ -6288,7 +6378,7 @@
 		(at 35.56 135.89 180)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "4882fce2-9ecb-4db6-b213-39426fc66c17")
@@ -6329,6 +6419,24 @@
 			)
 		)
 		(property "Description" "Generic screw terminal, single row, 01x04, script generated (kicad-library-utils/schlib/autogen/connector/)"
+			(at 35.56 135.89 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" ""
+			(at 35.56 135.89 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" ""
 			(at 35.56 135.89 0)
 			(effects
 				(font
@@ -6405,6 +6513,24 @@
 			)
 		)
 		(property "Description" "Resistor, small US symbol"
+			(at 49.53 53.34 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "RC0603FR-074K7L"
+			(at 49.53 53.34 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "Yageo"
 			(at 49.53 53.34 0)
 			(effects
 				(font
@@ -6498,7 +6624,7 @@
 		(at 35.56 59.69 180)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "53b177fd-084a-45df-9fad-2a43058f1645")
@@ -6547,6 +6673,24 @@
 				(hide yes)
 			)
 		)
+		(property "MPN" ""
+			(at 35.56 59.69 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" ""
+			(at 35.56 59.69 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "4"
 			(uuid "336fbec6-2476-4788-8188-2ec3fdc9a329")
 		)
@@ -6573,7 +6717,7 @@
 		(at 35.56 97.79 180)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "54887c20-a7f7-400e-bc3b-aa316e6852e9")
@@ -6614,6 +6758,24 @@
 			)
 		)
 		(property "Description" "Generic screw terminal, single row, 01x04, script generated (kicad-library-utils/schlib/autogen/connector/)"
+			(at 35.56 97.79 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" ""
+			(at 35.56 97.79 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" ""
 			(at 35.56 97.79 0)
 			(effects
 				(font
@@ -6830,6 +6992,24 @@
 				(hide yes)
 			)
 		)
+		(property "MPN" "RC0603FR-074K7L"
+			(at 59.69 91.44 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "Yageo"
+			(at 59.69 91.44 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "f25ccc32-1bd4-4ee3-8f33-4d9e07561b8c")
 		)
@@ -6850,7 +7030,7 @@
 		(at 88.9 49.53 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(fields_autoplaced yes)
@@ -6936,6 +7116,24 @@
 					(size 1.27 1.27)
 				)
 				(justify bottom)
+				(hide yes)
+			)
+		)
+		(property "MPN" ""
+			(at 88.9 49.53 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" ""
+			(at 88.9 49.53 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
 				(hide yes)
 			)
 		)
@@ -7111,6 +7309,24 @@
 				(hide yes)
 			)
 		)
+		(property "MPN" "RC0603FR-074K7L"
+			(at 193.04 130.81 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "Yageo"
+			(at 193.04 130.81 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "e38fa9e2-bf04-47fc-a027-c2db714d3bfd")
 		)
@@ -7171,6 +7387,24 @@
 		)
 		(property "Description" "capacitor, small US symbol"
 			(at 116.84 36.83 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "GRM188R71E104KA01D"
+			(at 116.84 36.83 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "Murata"
+			(at 116.84 36.83 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7304,6 +7538,24 @@
 		)
 		(property "Description" "capacitor, small US symbol"
 			(at 116.84 74.93 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "GRM188R71E104KA01D"
+			(at 116.84 74.93 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "Murata"
+			(at 116.84 74.93 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7707,6 +7959,24 @@
 				(hide yes)
 			)
 		)
+		(property "MPN" "GRM188R71E104KA01D"
+			(at 116.84 151.13 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "Murata"
+			(at 116.84 151.13 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "8303cf0e-c5dd-4905-9224-675cae981170")
 		)
@@ -8058,7 +8328,7 @@
 		(at 88.9 125.73 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(fields_autoplaced yes)
@@ -8144,6 +8414,24 @@
 					(size 1.27 1.27)
 				)
 				(justify bottom)
+				(hide yes)
+			)
+		)
+		(property "MPN" ""
+			(at 88.9 125.73 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" ""
+			(at 88.9 125.73 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
 				(hide yes)
 			)
 		)
@@ -8451,6 +8739,24 @@
 				(hide yes)
 			)
 		)
+		(property "MPN" "RC0603FR-074K7L"
+			(at 59.69 129.54 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "Yageo"
+			(at 59.69 129.54 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "4afdc909-532c-42ec-9b1b-9ce35a98f2e3")
 		)
@@ -8513,6 +8819,24 @@
 			)
 		)
 		(property "Description" "Resistor, small US symbol"
+			(at 49.53 167.64 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "RC0603FR-074K7L"
+			(at 49.53 167.64 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "Yageo"
 			(at 49.53 167.64 0)
 			(effects
 				(font
@@ -8657,6 +8981,24 @@
 				(hide yes)
 			)
 		)
+		(property "MPN" "GRM21BR61A106KE19L"
+			(at 209.55 34.29 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "Murata"
+			(at 209.55 34.29 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "a2ed23b7-0514-4a76-9e5c-2680c07002d8")
 		)
@@ -8677,7 +9019,7 @@
 		(at 88.9 87.63 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(fields_autoplaced yes)
@@ -8766,6 +9108,24 @@
 				(hide yes)
 			)
 		)
+		(property "MPN" ""
+			(at 88.9 87.63 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" ""
+			(at 88.9 87.63 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "3"
 			(uuid "ac784a89-188a-4dc9-8260-b042613046d6")
 		)
@@ -8822,7 +9182,7 @@
 		(at 35.56 173.99 180)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "d56ca654-f94e-41d9-a887-7d75c123f9eb")
@@ -8863,6 +9223,24 @@
 			)
 		)
 		(property "Description" "Generic screw terminal, single row, 01x04, script generated (kicad-library-utils/schlib/autogen/connector/)"
+			(at 35.56 173.99 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" ""
+			(at 35.56 173.99 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" ""
 			(at 35.56 173.99 0)
 			(effects
 				(font
@@ -9145,6 +9523,24 @@
 				(hide yes)
 			)
 		)
+		(property "MPN" "RC0603FR-074K7L"
+			(at 49.53 129.54 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "Yageo"
+			(at 49.53 129.54 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "b4fa0f3c-2ef9-4a37-86e2-38fc12aa8364")
 		)
@@ -9231,7 +9627,7 @@
 		(at 88.9 163.83 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(fields_autoplaced yes)
@@ -9317,6 +9713,24 @@
 					(size 1.27 1.27)
 				)
 				(justify bottom)
+				(hide yes)
+			)
+		)
+		(property "MPN" ""
+			(at 88.9 163.83 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" ""
+			(at 88.9 163.83 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
 				(hide yes)
 			)
 		)
@@ -9418,6 +9832,24 @@
 			)
 		)
 		(property "Description" "Resistor, small US symbol"
+			(at 59.69 167.64 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "RC0603FR-074K7L"
+			(at 59.69 167.64 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "Yageo"
 			(at 59.69 167.64 0)
 			(effects
 				(font

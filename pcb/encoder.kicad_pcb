@@ -323,11 +323,37 @@
 				)
 			)
 		)
+		(property "MPN" ""
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "3e5d411c-a273-474c-9996-c07cc52d1dd6")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Manufacturer" ""
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "1cd62857-de52-4ebb-8a37-f3111e0a40b2")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "TerminalBlock*:*")
 		(path "/2bf3c86a-c9ec-4f33-a614-ab9a6baea884")
 		(sheetname "/")
 		(sheetfile "encoder.kicad_sch")
-		(attr through_hole)
+		(attr through_hole exclude_from_bom)
 		(fp_line
 			(start 17.62 -4.12)
 			(end 17.62 5.12)
@@ -737,6 +763,32 @@
 				)
 			)
 		)
+		(property "MPN" "RC0603FR-074K7L"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "0db6ca59-8bc3-4077-a2bc-f537cbd506c0")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Manufacturer" "Yageo"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "5c9593bb-409e-440e-97b9-bb410d53f59f")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "R_*")
 		(path "/a83fd3f1-16a4-415d-b717-c8df6cd39cbb")
 		(sheetname "/")
@@ -875,6 +927,32 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "RC0603FR-074K7L"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "737747aa-83ac-483c-ba45-43c508ee10d0")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Manufacturer" "Yageo"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "566164c5-8172-4ac6-9ced-ee56a4cb2622")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -1070,10 +1148,36 @@
 				)
 			)
 		)
+		(property "MPN" ""
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "d42a72e1-72ec-44bb-98ec-d5bb1f0ab93f")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Manufacturer" ""
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "ebec0647-e002-4d62-a547-06744e5eaf45")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(path "/c951042e-e927-4786-9d24-89d85a6385ec")
 		(sheetname "/")
 		(sheetfile "encoder.kicad_sch")
-		(attr through_hole)
+		(attr through_hole exclude_from_bom)
 		(fp_line
 			(start -3.3 -9.5875)
 			(end 3.3 -9.5875)
@@ -1468,10 +1572,36 @@
 				)
 			)
 		)
+		(property "MPN" ""
+			(at 0 0 270)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "189d4730-a394-4aa9-9589-6bc4388ee83d")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Manufacturer" ""
+			(at 0 0 270)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "38a7cf1f-13d8-44cd-8ac7-249e3717c709")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(path "/f943b08f-467d-471a-80c2-c5dac60ca5b9")
 		(sheetname "/")
 		(sheetfile "encoder.kicad_sch")
-		(attr through_hole)
+		(attr through_hole exclude_from_bom)
 		(fp_line
 			(start -3.3 9.5875)
 			(end 3.3 9.5875)
@@ -1817,6 +1947,32 @@
 				)
 			)
 		)
+		(property "MPN" "GRM21BR61A106KE19L"
+			(at 0 0 270)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "42212f92-aba3-46c1-bf2a-db75541241c1")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Manufacturer" "Murata"
+			(at 0 0 270)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "183d9235-4d4f-4357-a967-260dfe8b4f6b")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "C_*")
 		(path "/c87186c6-713e-4e56-b2db-8a46daba3097")
 		(sheetname "/")
@@ -1959,6 +2115,32 @@
 				)
 			)
 		)
+		(property "MPN" "RC0603FR-074K7L"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "41bd019e-962e-4e6e-a1c7-584ea60e6f47")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Manufacturer" "Yageo"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "1795dbe9-33fc-4921-8f4d-2d6f449f7d37")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "R_*")
 		(path "/623c6c71-ccbc-420d-86d1-77508682d189")
 		(sheetname "/")
@@ -2051,13 +2233,13 @@
 	(footprint "Capacitor_SMD:C_0603_1608Metric"
 		(layer "F.Cu")
 		(uuid "50fc2f46-c182-429d-9669-6e23ba311d78")
-		(at 147.225 86 180)
+		(at 148.775 86)
 		(descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
 		(tags "capacitor")
 		(property "Reference" "C4"
 			(at -2.775 0 0)
 			(layer "F.SilkS")
-			(uuid "c3c04008-747a-426a-b4f2-25c90c89573b")
+			(uuid "ead32048-d389-4425-b3f9-4f47c9ff7a26")
 			(effects
 				(font
 					(size 1 1)
@@ -2069,7 +2251,7 @@
 			(at 0.225 -1.5 0)
 			(layer "F.Fab")
 			(hide yes)
-			(uuid "4940162b-d7fc-4d87-a12e-1bc09fad4815")
+			(uuid "95aa9309-6aa5-4979-b522-c5584fb81982")
 			(effects
 				(font
 					(size 1 1)
@@ -2081,7 +2263,7 @@
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
-			(uuid "24bc2518-44cc-4c03-a26c-a25b76ce2d62")
+			(uuid "82dc8fdf-99e8-49b3-a8a4-009ad6104280")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2093,10 +2275,36 @@
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
-			(uuid "0c7f7b49-fa3e-4c43-94db-78d4475a3b18")
+			(uuid "43c9be0a-1301-466c-bcba-efcd668ce754")
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "GRM188R71E104KA01D"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "ee17236c-4554-488a-954f-1fbeccdf89fc")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Manufacturer" "Murata"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "00edb5fa-7bd0-476e-bef6-34286bf5ecca")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -2107,16 +2315,6 @@
 		(sheetfile "encoder.kicad_sch")
 		(attr smd)
 		(fp_line
-			(start -0.14058 0.51)
-			(end 0.14058 0.51)
-			(stroke
-				(width 0.12)
-				(type solid)
-			)
-			(layer "F.SilkS")
-			(uuid "4df0d13d-f399-4fdf-8da3-9e998c51d1de")
-		)
-		(fp_line
 			(start -0.14058 -0.51)
 			(end 0.14058 -0.51)
 			(stroke
@@ -2125,6 +2323,16 @@
 			)
 			(layer "F.SilkS")
 			(uuid "b6d4b3ed-7a3d-495d-b6c5-02e2bd82e0d0")
+		)
+		(fp_line
+			(start -0.14058 0.51)
+			(end 0.14058 0.51)
+			(stroke
+				(width 0.12)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "4df0d13d-f399-4fdf-8da3-9e998c51d1de")
 		)
 		(fp_rect
 			(start -1.48 -0.73)
@@ -2160,7 +2368,7 @@
 			)
 		)
 		(pad "1" smd roundrect
-			(at -0.775 0 180)
+			(at -0.775 0)
 			(size 0.9 0.95)
 			(layers "F.Cu" "F.Mask" "F.Paste")
 			(roundrect_rratio 0.25)
@@ -2169,7 +2377,7 @@
 			(uuid "b1f7f882-2563-4546-9b4f-41bbdbe5aa20")
 		)
 		(pad "2" smd roundrect
-			(at 0.775 0 180)
+			(at 0.775 0)
 			(size 0.9 0.95)
 			(layers "F.Cu" "F.Mask" "F.Paste")
 			(roundrect_rratio 0.25)
@@ -2239,6 +2447,32 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "RC0603FR-074K7L"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "d9a7efc3-e87f-44f8-a74e-db8ac4f8718b")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Manufacturer" "Yageo"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "99bd6943-a46f-4649-bfd7-274d6fc296b3")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -2384,11 +2618,37 @@
 				)
 			)
 		)
+		(property "MPN" ""
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "75edb374-0772-4ba6-9dfb-73bda5e6ec15")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Manufacturer" ""
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "94e00d49-c270-4eb6-b5ec-b74ce5e713ce")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "TerminalBlock*:*")
 		(path "/4882fce2-9ecb-4db6-b213-39426fc66c17")
 		(sheetname "/")
 		(sheetfile "encoder.kicad_sch")
-		(attr through_hole)
+		(attr through_hole exclude_from_bom)
 		(fp_line
 			(start -2.62 -4.12)
 			(end 17.62 -4.12)
@@ -2847,10 +3107,36 @@
 				)
 			)
 		)
+		(property "MPN" ""
+			(at 0 0 180)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "2c1b7162-7f0d-4aac-8b4f-ad1823a51b98")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Manufacturer" ""
+			(at 0 0 180)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "1824b741-339c-4162-b547-b81fd13eef20")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(path "/9fd129f9-1d0c-44b6-915b-5223d343b1ac")
 		(sheetname "/")
 		(sheetfile "encoder.kicad_sch")
-		(attr through_hole)
+		(attr through_hole exclude_from_bom)
 		(fp_line
 			(start -3.3 9.5875)
 			(end 3.3 9.5875)
@@ -3334,10 +3620,36 @@
 				)
 			)
 		)
+		(property "MPN" ""
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "80df904f-d274-4256-91f1-1870d0237407")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Manufacturer" ""
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "a1f42c70-eba7-45cf-850d-fadcbcdc554b")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(path "/5b94093e-e3cd-42da-9109-47560897895d")
 		(sheetname "/")
 		(sheetfile "encoder.kicad_sch")
-		(attr through_hole)
+		(attr through_hole exclude_from_bom)
 		(fp_line
 			(start -3.3 -9.5875)
 			(end 3.3 -9.5875)
@@ -3683,6 +3995,32 @@
 				)
 			)
 		)
+		(property "MPN" "RC0603FR-074K7L"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "d4fa28f8-b136-4215-883f-ce5e08f5c774")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Manufacturer" "Yageo"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "5f7bfae8-19d1-49f8-98f4-d6276eb1b8dc")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "R_*")
 		(path "/e7a2748e-4bcb-4e0f-a407-7d052b2c0223")
 		(sheetname "/")
@@ -3913,11 +4251,37 @@
 				)
 			)
 		)
+		(property "MPN" ""
+			(at 0 0 270)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "d448ca1e-3b6d-4b53-a681-6bf622ceb450")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Manufacturer" ""
+			(at 0 0 270)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "4d24df6c-e65b-40d2-9c5b-0adc46a60e5e")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "TerminalBlock*:*")
 		(path "/53b177fd-084a-45df-9fad-2a43058f1645")
 		(sheetname "/")
 		(sheetfile "encoder.kicad_sch")
-		(attr through_hole)
+		(attr through_hole exclude_from_bom)
 		(fp_line
 			(start -2.62 5.12)
 			(end -2.62 -4.12)
@@ -4327,6 +4691,32 @@
 				)
 			)
 		)
+		(property "MPN" "GRM188R71E104KA01D"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "ddd9846a-7869-408d-ae3e-53ca655bd4ae")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Manufacturer" "Murata"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "f7932b02-d88d-4e2d-b3d8-41c67ff7a75f")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "C_*")
 		(path "/630639c3-2765-4be9-807f-9e02a264280e")
 		(sheetname "/")
@@ -4465,6 +4855,32 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "GRM188R71E104KA01D"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "c1c31295-5026-466d-bcee-15958a629b0e")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Manufacturer" "Murata"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "98af1b60-a87f-4a8e-b36c-ddab9d0c4e93")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -4611,6 +5027,32 @@
 				)
 			)
 		)
+		(property "MPN" "RC0603FR-074K7L"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "151fd363-5e69-40cc-8d84-de022c07c683")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Manufacturer" "Yageo"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "cafa9240-0f5a-43df-9192-684dc1cb4ab4")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "R_*")
 		(path "/5825b6e3-78df-4fbe-9f22-ea66d256091d")
 		(sheetname "/")
@@ -4752,11 +5194,37 @@
 				)
 			)
 		)
+		(property "MPN" ""
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "d1eccfc7-b891-49c1-b6e8-1aab330d5365")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Manufacturer" ""
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "c73ac1d5-3715-49f3-858c-fa8fadc145e3")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "TerminalBlock*:*")
 		(path "/d56ca654-f94e-41d9-a887-7d75c123f9eb")
 		(sheetname "/")
 		(sheetfile "encoder.kicad_sch")
-		(attr through_hole)
+		(attr through_hole exclude_from_bom)
 		(fp_line
 			(start -2.62 -4.12)
 			(end 17.62 -4.12)
@@ -5165,11 +5633,37 @@
 				)
 			)
 		)
+		(property "MPN" ""
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "34f063de-48d3-4a5e-831b-11fc88369888")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Manufacturer" ""
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "1bfa8edb-afbc-4353-ae35-74c354df40b9")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "TerminalBlock*:*")
 		(path "/54887c20-a7f7-400e-bc3b-aa316e6852e9")
 		(sheetname "/")
 		(sheetfile "encoder.kicad_sch")
-		(attr through_hole)
+		(attr through_hole exclude_from_bom)
 		(fp_line
 			(start 17.62 -4.12)
 			(end 17.62 5.12)
@@ -5668,6 +6162,32 @@
 				)
 			)
 		)
+		(property "MPN" "RC0603FR-074K7L"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "45a61857-e0cb-4c1a-a2a8-fb50b35203cb")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Manufacturer" "Yageo"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "cca180da-bece-4bf2-a941-98ae8b7f5c28")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "R_*")
 		(path "/c3d69f6b-4739-4ead-a1c5-5c197baa7eb8")
 		(sheetname "/")
@@ -5806,6 +6326,32 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "RC0603FR-074K7L"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "77d7a5ba-5d32-4a97-83c5-26e29038ff67")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Manufacturer" "Yageo"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "24fd021d-e1a1-47c0-ac6f-68c37576be89")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -5952,6 +6498,32 @@
 				)
 			)
 		)
+		(property "MPN" "GRM188R71E104KA01D"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "602e7071-0945-418d-9c2c-085132f7675e")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Manufacturer" "Murata"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "a9dd03ba-2ace-46ff-a07c-824c76d734b2")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "C_*")
 		(path "/2695d007-1e46-4a18-878a-6595b0da8884")
 		(sheetname "/")
@@ -6090,6 +6662,32 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "RC0603FR-074K7L"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "44c4c9c1-1fbc-4df1-b5d7-713d39123ce3")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Manufacturer" "Yageo"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "ad48af7d-a330-46bc-9474-2bb1bd556c9a")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -6239,11 +6837,39 @@
 				)
 			)
 		)
+		(property "MPN" ""
+			(at 0 0 270)
+			(unlocked yes)
+			(layer "B.Fab")
+			(hide yes)
+			(uuid "87312c66-2186-42c1-81b7-2dbd2753a688")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+				(justify mirror)
+			)
+		)
+		(property "Manufacturer" ""
+			(at 0 0 270)
+			(unlocked yes)
+			(layer "B.Fab")
+			(hide yes)
+			(uuid "ee2ca25d-89ca-41ad-a480-da5505442d8a")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+				(justify mirror)
+			)
+		)
 		(property ki_fp_filters "Connector*:*_2x??_*")
 		(path "/00000000-0000-0000-0000-000059ad464a")
 		(sheetname "/")
 		(sheetfile "encoder.kicad_sch")
-		(attr through_hole)
+		(attr through_hole exclude_from_bom)
 		(fp_line
 			(start -3.87 1.33)
 			(end -1.27 1.33)
@@ -7474,14 +8100,6 @@
 		)
 	)
 	(segment
-		(start 145 86)
-		(end 144.5 86.5)
-		(width 0.2)
-		(layer "F.Cu")
-		(net 1)
-		(uuid "03d965a1-f371-4f2e-97f2-db8932eaa54e")
-	)
-	(segment
 		(start 123.5 52.5)
 		(end 124 52)
 		(width 0.2)
@@ -7530,6 +8148,14 @@
 		(uuid "6a6cdbd3-0650-4cfa-9b92-77dd13feb52c")
 	)
 	(segment
+		(start 149.55 86)
+		(end 151 86)
+		(width 0.2)
+		(layer "F.Cu")
+		(net 1)
+		(uuid "706eee41-3826-4b70-b452-3729c9b00d78")
+	)
+	(segment
 		(start 139 60.25)
 		(end 139.429271 60.25)
 		(width 0.2)
@@ -7560,14 +8186,6 @@
 		(layer "F.Cu")
 		(net 1)
 		(uuid "9fe3e10e-55db-4422-8c71-3d0f2cdd01a4")
-	)
-	(segment
-		(start 146.45 86)
-		(end 145 86)
-		(width 0.2)
-		(layer "F.Cu")
-		(net 1)
-		(uuid "a3525f73-2716-445a-802b-49f00088a46f")
 	)
 	(segment
 		(start 125.46 61.81)
@@ -7634,14 +8252,6 @@
 		(uuid "346afd8a-ebe8-4a13-93f7-a6643863da71")
 	)
 	(via
-		(at 144.5 86.5)
-		(size 0.9)
-		(drill 0.6)
-		(layers "F.Cu" "B.Cu")
-		(net 1)
-		(uuid "361b9977-d466-4488-8901-65091afbc049")
-	)
-	(via
 		(at 124 52)
 		(size 0.9)
 		(drill 0.6)
@@ -7656,6 +8266,14 @@
 		(layers "F.Cu" "B.Cu")
 		(net 1)
 		(uuid "731050ef-daaf-4d7a-997e-8eec8c45348d")
+	)
+	(via
+		(at 151 86)
+		(size 0.9)
+		(drill 0.6)
+		(layers "F.Cu" "B.Cu")
+		(net 1)
+		(uuid "9b7a698d-de3b-469b-8185-f9515eef7012")
 	)
 	(via
 		(at 139 60.25)
