@@ -5945,7 +5945,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "77041472P"
+		(property "MPN" "4604X-101-472LF"
 			(at 52.07 161.29 0)
 			(effects
 				(font
@@ -5954,7 +5954,7 @@
 				(hide yes)
 			)
 		)
-		(property "Manufacturer" "CTS"
+		(property "Manufacturer" "Bourns"
 			(at 52.07 161.29 0)
 			(effects
 				(font
@@ -6102,7 +6102,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "C315C104K5R5TA"
+		(property "MPN" "FA18X8R1E104KNU00"
 			(at 116.84 113.03 90)
 			(effects
 				(font
@@ -6111,7 +6111,7 @@
 				(hide yes)
 			)
 		)
-		(property "Manufacturer" "Kemet"
+		(property "Manufacturer" "TDK"
 			(at 116.84 113.03 90)
 			(effects
 				(font
@@ -7052,7 +7052,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "C315C104K5R5TA"
+		(property "MPN" "FA18X8R1E104KNU00"
 			(at 116.84 36.83 90)
 			(effects
 				(font
@@ -7061,7 +7061,7 @@
 				(hide yes)
 			)
 		)
-		(property "Manufacturer" "Kemet"
+		(property "Manufacturer" "TDK"
 			(at 116.84 36.83 90)
 			(effects
 				(font
@@ -7203,7 +7203,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "C315C104K5R5TA"
+		(property "MPN" "FA18X8R1E104KNU00"
 			(at 116.84 74.93 90)
 			(effects
 				(font
@@ -7212,7 +7212,7 @@
 				(hide yes)
 			)
 		)
-		(property "Manufacturer" "Kemet"
+		(property "Manufacturer" "TDK"
 			(at 116.84 74.93 90)
 			(effects
 				(font
@@ -7423,7 +7423,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "77041472P"
+		(property "MPN" "4604X-101-472LF"
 			(at 52.07 123.19 0)
 			(effects
 				(font
@@ -7432,7 +7432,7 @@
 				(hide yes)
 			)
 		)
-		(property "Manufacturer" "CTS"
+		(property "Manufacturer" "Bourns"
 			(at 52.07 123.19 0)
 			(effects
 				(font
@@ -7646,7 +7646,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "C315C104K5R5TA"
+		(property "MPN" "FA18X8R1E104KNU00"
 			(at 116.84 151.13 90)
 			(effects
 				(font
@@ -7655,7 +7655,7 @@
 				(hide yes)
 			)
 		)
-		(property "Manufacturer" "Kemet"
+		(property "Manufacturer" "TDK"
 			(at 116.84 151.13 90)
 			(effects
 				(font
@@ -8228,7 +8228,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "77041472P"
+		(property "MPN" "4604X-101-472LF"
 			(at 52.07 85.09 0)
 			(effects
 				(font
@@ -8237,7 +8237,7 @@
 				(hide yes)
 			)
 		)
-		(property "Manufacturer" "CTS"
+		(property "Manufacturer" "Bourns"
 			(at 52.07 85.09 0)
 			(effects
 				(font
@@ -8650,7 +8650,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "C322C106K8R5TA"
+		(property "MPN" "FG14X7R1A106KRT00"
 			(at 209.55 34.29 0)
 			(effects
 				(font
@@ -8659,7 +8659,7 @@
 				(hide yes)
 			)
 		)
-		(property "Manufacturer" "Kemet"
+		(property "Manufacturer" "TDK"
 			(at 209.55 34.29 0)
 			(effects
 				(font
@@ -8738,7 +8738,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "77041472P"
+		(property "MPN" "4604X-101-472LF"
 			(at 52.07 46.99 0)
 			(effects
 				(font
@@ -8747,7 +8747,7 @@
 				(hide yes)
 			)
 		)
-		(property "Manufacturer" "CTS"
+		(property "Manufacturer" "Bourns"
 			(at 52.07 46.99 0)
 			(effects
 				(font

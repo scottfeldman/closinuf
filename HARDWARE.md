@@ -59,23 +59,21 @@ this application needs.
 | Ref       | Qty | Part                                  | Suggested MPN                  | KiCad footprint                                      | Notes |
 |-----------|-----|---------------------------------------|--------------------------------|------------------------------------------------------|-------|
 | U1–U4     | 4   | **LS7366‑R** (DIP‑14, through‑hole)   | `LS7366-R`                     | `LS7366R:DIP762W45P254L1917H533Q14`                  | Single‑channel 32‑bit quadrature counter with SPI (DIP package used on this board). |
-| C1–C4     | 4   | 0.1 µF, X7R, 25 V, 0603, ±10 %        | Murata `GRM188R71E104KA01D`    | `Capacitor_SMD:C_0603_1608Metric`                    | Decoupling, **at pin 14 (VDD)** of each chip. |
-| C5        | 1   | 10 µF, X5R, 10 V, 0805, ±10 %         | Murata `GRM21BR61A106KE19L`    | `Capacitor_SMD:C_0805_2012Metric`                    | Bulk on the 3.3 V rail. Use ≥10 V part to avoid DC‑bias derating loss at 3.3 V. |
-| R9        | 1   | 4.7 kΩ, 1 %, 1/10 W, 0603             | Yageo `RC0603FR-074K7L`        | `Resistor_SMD:R_0603_1608Metric`                     | Foot‑switch pull‑up to 3.3 V. |
-| R1–R8     | 8   | 4.7 kΩ, 1 %, 1/10 W, 0603             | Yageo `RC0603FR-074K7L`        | `Resistor_SMD:R_0603_1608Metric`                     | Pull‑ups on every encoder A and B (2 per encoder × 4 encoders). |
+| C1–C4     | 4   | 0.1 µF, X8R, disc, 50 V, ±10 %        | TDK `FA18X8R1E104KNU00`        | `Capacitor_THT:C_Disc_D3.8mm_W2.6mm_P2.50mm`         | Decoupling, **at pin 14 (VDD)** of each chip. |
+| C5        | 1   | 10 µF, X7R, disc, 10 V, ±10 %         | TDK `FG14X7R1A106KRT00`        | `Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P2.50mm`         | Bulk on the 3.3 V rail. |
+| RN1–RN4   | 4   | 3× 4.7 kΩ bussed resistor network (SIP‑4) | Bourns `4604X-101-472LF`     | `Resistor_THT:R_Array_SIP4`                          | Pull‑ups on every encoder A and B, plus the foot‑switch pull‑up. |
 | J1        | 1   | 2×20 0.1″ socket                      | Samtec `SSW-120-01-T-D` (or any 2×20 2.54 mm socket) | `Connector_PinSocket_2.54mm:PinSocket_2x20_P2.54mm_Vertical` | Pi GPIO header connector. |
 | J6        | 1   | 4‑pos PCB terminal block, 5 mm pitch, horizontal entry | Phoenix Contact `PT 1,5/ 4-5,0-H` (1935284) | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_PT-1,5-4-5.0-H_1x04_P5.00mm_Horizontal` | Foot switch — only 2 of the 4 positions are wired (GPIO 26 + GND). |
 | J2–J5     | 4   | 4‑pos PCB terminal block, 5 mm pitch, horizontal entry | Phoenix Contact `PT 1,5/ 4-5,0-H` (1935284) | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_PT-1,5-4-5.0-H_1x04_P5.00mm_Horizontal` | Encoder cables (X, X′, Y, Z). Each carries A, B, **+5 V**, GND. |
 | —         | —   | Optional: 4× (100 Ω + 1 nF)           | —                              | —                                                    | RC snubber on each A/B if encoder cables are long (>1 m). |
 | —         | —   | Optional: 1× 4.7 kΩ + 1 GPIO          | —                              | —                                                    | Pull‑up for wire‑OR’d `FLAG/` interrupt if you ever wire it. |
 
-All passives are surface‑mount: caps and resistors in 0603 (with `C5` in 0805 for
-better DC‑bias performance). MPNs above are stocked at Digi‑Key / Mouser / LCSC
+Passives are through‑hole: disc caps and SIP resistor networks. MPNs above are stocked at Digi‑Key / Mouser / LCSC
 and are interchangeable with the equivalent parts from Kemet, Panasonic, Vishay,
 TDK, Samsung, or Yageo at the same package and dielectric. The KiCad footprints
 in the table are the standard parts shipped with KiCad's stock libraries; the
 schematic in `pcb/encoder.kicad_sch` should assign them for every component
-(U1–U4, C1–C4, C5, R1–R9, J1–J6) once updated for LS7366R.
+(U1–U4, RN1–RN4, C1–C4, C5, J1–J6) once updated for LS7366R.
 
 ---
 
@@ -250,7 +248,7 @@ Each encoder is connected via a 4‑pin cable: **A**, **B**, **+5 V**, **GND**,
 landed on a 4‑position screw terminal (`J2` = X, `J3` = X′, `J4` = Y, `J5` = Z).
 The encoder modules themselves run from the Pi's **+5 V** rail (header pin 2 or 4);
 their A/B outputs are NPN open‑collector and are pulled up to **3.3 V** at the
-LS7366R end by `R2`–`R9`, so the signal seen by the chip is a clean 3.3 V CMOS
+LS7366R end by `RN1`–`RN4`, so the signal seen by the chip is a clean 3.3 V CMOS
 level — never above the LS7366R's `VDD`.
 
 Encoder Z (index) is not used; each chip's **`INDEX/`** pin is tied to **3.3 V**
@@ -273,7 +271,7 @@ Connector **J6** (4‑pos screw terminal, 2 of the 4 positions wired):
 
 | Net      | Connection                                       |
 |----------|--------------------------------------------------|
-| Switch.1 | GPIO 26 (header pin 37), 4.7 kΩ pull‑up (`R9`) to 3.3 V |
+| Switch.1 | GPIO 26 (header pin 37), 4.7 kΩ pull‑up (one element of `RN1`–`RN4`) to 3.3 V |
 | Switch.2 | GND (header pin 39)                              |
 
 Normally open, momentary. Software treats falling edge as "capture point",
@@ -287,7 +285,7 @@ with debounce and ≥500 ms minimum spacing in firmware.
                            Raspberry Pi 40-pin header (J1)
    ┌───────────────────────────────────────────────────────────────────┐
    │ +3V3 (pin 1, 17) ──────────────► +3V3 rail ────► U1..U4 pin 14
-   │                                                └─► all 4k7 pull-ups (R1..R9)
+   │                                                └─► all 4k7 pull-ups (RN1..RN4)
    │                                                └─► CNT_EN (pin 13), INDEX/ (pin 10)
    │ +5V  (pin 2, 4)  ──────────────► +5V rail  ────► J2..J5 (encoder modules)
    │ GND  (pin 6,9,...)─────────────► GND rail  ────► U1..U4 pin 3 (VSS)
@@ -305,7 +303,7 @@ with debounce and ≥500 ms minimum spacing in firmware.
    │
    │ GPIO4  (pin 7)  GPCLK0 ───►  U1..U4 pin 2 (fCKi), shared
    │
-   │ GPIO26 (pin 37) ◄── J6 foot switch ── GND;  R9=4.7kΩ to +3V3
+   │ GPIO26 (pin 37) ◄── J6 foot switch ── GND;  4.7kΩ pull-up via RN1..RN4 to +3V3
    └────────────────────────────────────────────────────────────────────┘
 
   Each LS7366R (Ux): one encoder; pin 1 (fCKO) NC; pin 2 (fCKi) = shared GPCLK.
