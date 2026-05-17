@@ -124,15 +124,61 @@ Notes:
 
 ```ini
 dtparam=spi=on
+dtoverlay=spi0-2cs,cs0_pin=12,cs1_pin=13
 ```
 
-**GPCLK on GPIO4 (pin 7):** there is no single standard `config.txt` line on all
-Pi OS images. Typical approaches: a small **device‑tree overlay** that claims
-GPCLK0 on GPIO4 at the desired frequency, or **user‑space** setup via `pigpio`,
-`libgpiod`, or direct CM / `clk` register programming after boot. Aim for a
-stable MHz‑range clock on pin 7 before or as soon as encoder reads begin.
+`spi0-2cs` with **`cs0_pin` / `cs1_pin` moved off GPIO 8 and 7** is required: the
+board uses those pins for manual **SS/** to the LS7366Rs. `install.sh` adds these
+lines automatically.
+
+Reboot after editing; `config.txt` is read only at boot. Verify with `ls /dev/spidev*`.
+
+**GPCLK on GPIO4 (pin 7):** On **Raspberry Pi 4 (BCM2711)**, closinuf programs
+GPCLK0 at **~9 MHz** from the **19.2 MHz oscillator** via `/dev/mem` in
+`gpclk_linux.go` at startup (`closinuf-setup-gpclk.sh` runs as `ExecStartPre`
+backup).
+
 See [GPCLK / pinout](https://pinout.xyz/pinout/gpclk) and the LS7366R `fCKi`
 filter requirements above.
+
+**Verify GPCLK is running** (on the Pi):
+
+```bash
+sudo ./scripts/check-gpclk.sh
+```
+
+Checks: GPIO4 muxed to GPCLK0, GPCLK0 enable bit in the clock manager. **Pin 7**
+should show ~9 MHz on a scope if the clock is alive.
+
+**Encoder counts stuck at zero** (SPI verify OK):
+
+```bash
+curl -s http://127.0.0.1:3000/api/encoder/debug | jq
+# turn one encoder, then:
+curl -s 'http://127.0.0.1:3000/api/encoder/debug/probe?seconds=2' | jq
+./scripts/watch-counters.sh
+```
+
+`live_count` should change when you turn that axis. If `rx_hex` is all `ff` or zeros
+and `mdr0`/`mdr1` look right, check encoder **5 V**, **A/B** at `J2`–`J5`, and
+**GPCLK** on pin 7 (`sudo ./scripts/check-gpclk.sh`).
+
+Quick functional test — closinuf programs GPCLK via `/dev/mem` only as **root**:
+
+```bash
+sudo systemctl stop closinuf
+sudo ./closinuf
+# another terminal: curl -s http://127.0.0.1:3000/api/encoder | jq
+```
+
+`install.sh` runs **`closinuf-setup-gpclk.sh`** as **ExecStartPre** (root).
+The app only touches `/dev/mem` when started as **root** (e.g. `sudo ./closinuf`);
+the service user relies on that pre-start script and `/run/closinuf-gpclk.ok`.
+
+```bash
+sudo ./scripts/setup-gpclk.sh    # manual setup (same registers as main)
+sudo ./scripts/check-gpclk.sh    # verify CTL + GPIO FSEL
+```
 
 ---
 
@@ -196,8 +242,8 @@ Per the LS7366R datasheet (Figure 2 / setup notes):
 
 ### Recommended register configuration
 
-Configure **each** of U1–U4 the same way. Example for **3‑byte (24‑bit)** counter
-width (closest to the old LS7466 setup):
+Configure **each** of U1–U4 the same way. Production firmware uses **4‑byte
+(32‑bit)** mode. Example for **3‑byte (24‑bit)** counter width (legacy / optional):
 
 | Register | Value  | Meaning |
 |----------|--------|---------|
@@ -212,6 +258,8 @@ Instruction bytes (datasheet / application listing):
 ```
 WRITE_MDR0 = 0x88
 WRITE_MDR1 = 0x90
+READ_MDR0  = 0x48
+READ_MDR1  = 0x50
 CLR_CNTR   = 0x20
 READ_CNTR  = 0x60   ; latches CNTR → OTR, then clocks out OTR on MISO
 ```
@@ -223,6 +271,10 @@ SS/↓  WRITE_MDR1 0x01  SS/↑     ; 3-byte mode, counting enabled
 SS/↓  WRITE_MDR0 0x03  SS/↑     ; x4 quadrature, free-run, no index
 SS/↓  CLR_CNTR          SS/↑   ; clear counter
 ```
+
+At startup, firmware runs **`verifyChip`** on each IC: `READ_MDR1` / `READ_MDR0`
+must match the written values, then `READ_CNTR` must be 0 after clear. Failure
+aborts startup with a log line naming the chip (U1–U4).
 
 Periodic read (3‑byte mode):
 
@@ -256,8 +308,9 @@ and index is disabled in `MDR0`. If you ever want homing on index, lift the
 3.3 V tie, add a pull‑up, route the encoder index to **`INDEX/`**, and set the
 `MDR0` index field to the desired mode (load / reset / load OTR).
 
-Per the firmware defaults (`main.go`): 600 PPR, x4 quadrature → 2400
-counts/rev; 50 mm wheel diameter, ≈157.08 mm/rev, ≈0.0654 mm/count.
+Per the firmware defaults (`main.go`): **32‑bit** counter mode (`MDR1 = 0x00`),
+600 PPR, x4 quadrature → 2400 counts/rev; 50 mm wheel diameter, ≈157.08 mm/rev,
+≈0.0654 mm/count.
 
 The LS7366R's max quadrature input rate at 3.3 V is **4.5 MHz** on A/B (with
 `fCKi` and filter settings that meet \(f_f \ge 4 f_{QA}\)), which at 600 PPR is

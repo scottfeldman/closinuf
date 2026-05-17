@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -23,33 +22,20 @@ import (
 )
 
 type Encoder struct {
-	counter       int   // total accumulated counts (signed for direction)
-	lastState     uint8 // previous A/B state (2 bits)
+	counter       int // hardware counter value (signed)
 	lastReadTime  time.Time
 	lastReadCount int
 	rpm           float64
 	label         string
-	lines         *gpiocdev.Lines // GPIO lines for this encoder
-	mu            sync.RWMutex    // protects this encoder's state
+	chip          int // 0..3 → U1..U4
+	mu            sync.RWMutex
 }
 
 const (
 	countsPerRev       = 2400.0                  // 600 PPR × 4 (full quadrature)
 	wheelDiameter      = 50.0                    // wheel diameter in mm
 	wheelCircumference = math.Pi * wheelDiameter // ≈ 157.08mm
-	// encoderPollInterval: sampling all four encoders each period. Faster motion
-	// needs a shorter interval so A/B never change two quadrature steps between reads
-	// (which would look like an invalid transition and drop counts). ~12.5 kHz loop.
-	encoderPollInterval = 1 * time.Microsecond
 )
-
-// Quadrature transition table: +1 = CW, -1 = CCW, 0 = no change / illegal 2-bit jump
-var quadDeltaTable = [16]int{
-	0, -1, +1, 0,
-	+1, 0, 0, -1,
-	-1, 0, 0, +1,
-	0, +1, -1, 0,
-}
 
 type EncoderData struct {
 	X  EncoderValues `json:"x"`
@@ -80,96 +66,32 @@ var (
 	btnPressHandled    bool // Track if we've already handled the current press
 )
 
-func pollEncodersForever() {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	for {
-		for _, enc := range encoders {
-			if enc == nil || enc.lines == nil {
-				continue
-			}
-			values := make([]int, 2)
-			if err := enc.lines.Values(values); err != nil {
-				continue
-			}
-			current := uint8((values[0] << 1) | values[1])
-			enc.mu.Lock()
-			if current != enc.lastState {
-				idx := int(enc.lastState)<<2 | int(current)
-				delta := quadDeltaTable[idx]
-				if delta != 0 {
-					enc.counter += delta
-				}
-				enc.lastState = current
-			}
-			enc.mu.Unlock()
-		}
-		time.Sleep(encoderPollInterval)
-	}
-}
-
 func main() {
 	const (
-		chipName = "gpiochip0"
-		// GPIO pins for each encoder: [A, B]
-		// All GPIO lines are pulled up with 4.7K resistor
-		xOffsetA       = 2  // GPIO2
-		xOffsetB       = 3  // GPIO3
-		xpOffsetA      = 22 // GPIO22
-		xpOffsetB      = 27 // GPIO27
-		yOffsetA       = 9  // GPIO9
-		yOffsetB       = 10 // GPIO10
-		zOffsetA       = 5  // GPIO5
-		zOffsetB       = 11 // GPIO11
+		chipName       = "gpiochip0"
 		pointBtnOffset = 26 // GPIO26 - physical button for adding points (NO contact)
 	)
 
-	// Initialize encoders
-	encoders[0] = &Encoder{label: "X"}  // X encoder
-	encoders[1] = &Encoder{label: "X'"} // X' encoder
-	encoders[2] = &Encoder{label: "Y"}  // Y encoder
-	encoders[3] = &Encoder{label: "Z"}  // Z encoder
+	encoders[0] = &Encoder{label: "X", chip: 0}
+	encoders[1] = &Encoder{label: "X'", chip: 1}
+	encoders[2] = &Encoder{label: "Y", chip: 2}
+	encoders[3] = &Encoder{label: "Z", chip: 3}
 
-	// Initialize GPIO for each encoder
-	encoderConfigs := []struct {
-		label   string
-		offsetA int
-		offsetB int
-		index   int
-	}{
-		{"X", xOffsetA, xOffsetB, 0},
-		{"X'", xpOffsetA, xpOffsetB, 1},
-		{"Y", yOffsetA, yOffsetB, 2},
-		{"Z", zOffsetA, zOffsetB, 3},
-	}
-
-	for _, cfg := range encoderConfigs {
-		enc := encoders[cfg.index]
-		enc.mu.Lock()
-		enc.lastReadTime = time.Now()
-		enc.lastReadCount = enc.counter
-		enc.mu.Unlock()
-
-		var err error
-		enc.lines, err = gpiocdev.RequestLines(chipName,
-			[]int{cfg.offsetA, cfg.offsetB},
-			gpiocdev.AsInput,
-			gpiocdev.WithConsumer("rotary-encoder-"+cfg.label),
-		)
-		if err != nil {
-			// If GPIO fails, continue anyway (for development/testing)
-			// In production, you might want to exit or handle differently
-			continue
-		}
-		values := make([]int, 2)
-		if err := enc.lines.Values(values); err == nil {
+	now := time.Now()
+	for _, enc := range encoders {
+		if enc != nil {
 			enc.mu.Lock()
-			enc.lastState = uint8((values[0] << 1) | values[1])
+			enc.lastReadTime = now
+			enc.lastReadCount = 0
 			enc.mu.Unlock()
 		}
 	}
 
-	go pollEncodersForever()
+	if err := initCounters(); err != nil {
+		fmt.Fprintf(os.Stderr, "Fatal: %v\n", err)
+		os.Exit(1)
+	}
+	go pollCountersForever()
 
 	// Setup GPIO for physical Point button
 	pointBtnHandler := func(evt gpiocdev.LineEvent) {
@@ -275,6 +197,8 @@ func main() {
 		return Page(data, unit).Render(c)
 	})
 
+	registerEncoderDebugRoutes(app)
+
 	// API endpoint to get encoder data (JSON)
 	app.Get("/api/encoder", func(c *fiber.Ctx) error {
 		data := getEncoderData()
@@ -319,10 +243,14 @@ func main() {
 
 	// Zero endpoint to reset all encoder counts and clear points
 	app.Post("/api/encoder/zero", func(c *fiber.Ctx) error {
+		if err := clearHardwareCounters(); err != nil {
+			return c.Status(500).SendString(err.Error())
+		}
 		for _, enc := range encoders {
 			if enc != nil {
 				enc.mu.Lock()
 				enc.counter = 0
+				enc.lastReadCount = 0
 				enc.mu.Unlock()
 			}
 		}
@@ -655,7 +583,7 @@ func Page(data EncoderData, unit string) g.Node {
 					font-family: 'Orbitron', monospace;
 					font-weight: 700;
 				}
-				.encoder-gpio-pins {
+				.encoder-chip-ref {
 					font-size: 0.75rem;
 					color: #009922;
 					margin-top: 0.25rem;
@@ -932,18 +860,18 @@ func Page(data EncoderData, unit string) g.Node {
 	)
 }
 
-func getGPIOPins(label string) (int, int) {
+func chipRef(label string) string {
 	switch label {
 	case "X":
-		return 2, 3
+		return "U1"
 	case "X'":
-		return 22, 27
+		return "U2"
 	case "Y":
-		return 9, 10
+		return "U3"
 	case "Z":
-		return 5, 11
+		return "U4"
 	default:
-		return 0, 0
+		return ""
 	}
 }
 
@@ -1105,8 +1033,6 @@ func encoderDisplayXMerged(x, xp EncoderValues, selectedUnit string) g.Node {
 	if !isZero {
 		deltaCardClass = "encoder-delta encoder-delta-nonzero"
 	}
-	pinXA, pinXB := getGPIOPins("X")
-	pinXpA, pinXpB := getGPIOPins("X'")
 	return Div(
 		Class("encoder-card"),
 		Div(
@@ -1142,8 +1068,8 @@ func encoderDisplayXMerged(x, xp EncoderValues, selectedUnit string) g.Node {
 				g.Text(otherUnitsLine),
 			),
 			Span(
-				Class("encoder-detail-item encoder-gpio-pins"),
-				g.Textf("GPIO%d/%d · %d/%d", pinXA, pinXB, pinXpA, pinXpB),
+				Class("encoder-detail-item encoder-chip-ref"),
+				g.Textf("%s · %s", chipRef("X"), chipRef("X'")),
 			),
 		),
 	)
@@ -1151,7 +1077,6 @@ func encoderDisplayXMerged(x, xp EncoderValues, selectedUnit string) g.Node {
 
 func encoderDisplay(label string, values EncoderValues, selectedUnit string) g.Node {
 	selectedDisplay, unitLabel, otherUnitsLine := distanceReadout(values.Distance, selectedUnit)
-	pinA, pinB := getGPIOPins(label)
 	return Div(
 		Class("encoder-card"),
 		Div(
@@ -1178,8 +1103,8 @@ func encoderDisplay(label string, values EncoderValues, selectedUnit string) g.N
 				g.Text(otherUnitsLine),
 			),
 			Span(
-				Class("encoder-detail-item encoder-gpio-pins"),
-				g.Textf("GPIO%d/%d", pinA, pinB),
+				Class("encoder-detail-item encoder-chip-ref"),
+				g.Text(chipRef(label)),
 			),
 		),
 	)

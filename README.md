@@ -12,16 +12,7 @@
 
 ## Hardware
 
-| Axis | GPIO (A / B) |
-|------|----------------|
-| X    | 2 / 3          |
-| X′   | 22 / 27        |
-| Y    | 9 / 10         |
-| Z    | 5 / 11         |
-
-- Encoders: **600 PPR** quadrature (2400 counts/rev) and **50 mm** wheel diameter match the defaults in `main.go`; change constants there if your hardware differs.  Code assumes external 4.7K pull-up resistors for encoder inputs.
-- Full board schematic, BOM, and pinout: see [HARDWARE.md](HARDWARE.md).
-- **Foot / capture switch**: GPIO **26**, normally‑open, pulled **high** (e.g. 4.7 kΩ to 3.3 V).
+See [HARDWARE.md](HARDWARE.md).
 
 ## Install on the Pi (`install.sh`)
 
@@ -38,11 +29,17 @@
    sudo ./install.sh
    ```
 
+3. Reboot if the installer prompts you to (it offers when boot config changed).
+
 What the script does:
 
+- Enables **SPI** and relocates kernel CE pins off GPIO 8/7 (`dtoverlay=spi0-2cs,cs0_pin=12,cs1_pin=13`) in `/boot/firmware/config.txt` (backs up first; skips lines already present).
 - Installs **`golang-go`** via `apt` if `go` is missing.
 - Builds **`./closinuf`** in the repo.
+- Adds the install user to **`spi`** and **`gpio`** groups when those groups exist.
 - Installs **closinuf** **systemd** services: **`closinuf.service`** (app on :3000), **`closinuf-browser.service`** (open Chromium after boot)
+- Runs **`closinuf-setup-gpclk.sh`** as **ExecStartPre** (root) for GPCLK0 ~9 MHz on GPIO4; `main` programs GPCLK only when run as root
+- Offers to **reboot** when SPI/GPCLK settings were added (`sudo ./install.sh --reboot` to reboot without prompting)
 
 Useful commands:
 
@@ -50,8 +47,6 @@ Useful commands:
 systemctl status closinuf closinuf-browser
 journalctl -u closinuf -f
 ```
-
-A reboot is recommended so graphical login and the browser unit start in a clean order. For GPIO, ensure the service user can use **`/dev/gpiochip*`** (e.g. `gpio` group or equivalent on your image).
 
 **Touch keyboard:** fullscreen Chromium can block some on‑screen keyboards; if the filename field stays hidden behind the keyboard, try launching the browser **maximized** instead of fullscreen (edit the `chromium` line in `/usr/local/bin/closinuf-browser.sh`). The UI adds extra **bottom padding** so you can scroll content above the keyboard.
 
@@ -74,7 +69,7 @@ One point per line: `X Y Z` in **millimeters** (space‑separated), suitable for
 
 ## Stack
 
-Fiber, HTMX, gomponents, **go-gpiocdev** (`gpiochip` character device).
+Fiber, HTMX, gomponents, **LS7366R** counters over **SPI0**, **go-gpiocdev** (chip selects + foot switch).
 
 ## License
 
