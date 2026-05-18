@@ -47,11 +47,13 @@ configure_boot() {
 
 configure_boot
 
-echo "Installing Go..."
-if ! command -v go >/dev/null 2>&1 ; then
-	apt-get update -qq
-	apt-get install -y golang-go
+echo "Installing dependencies..."
+apt-get update -qq
+deps=(alsa-utils)
+if ! command -v go >/dev/null 2>&1; then
+	deps+=(golang-go)
 fi
+apt-get install -y "${deps[@]}"
 
 echo "Building closinuf..."
 sudo -u "${APP_USER}" env HOME="${USER_HOME}" bash -c "cd '${INSTALL_DIR}' && go build -o closinuf ."

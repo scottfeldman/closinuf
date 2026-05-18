@@ -35,13 +35,13 @@ document as the spec.
 
 Four ICs total (one quadrature counter each). The Pi drives a shared **filter
 clock** into every chip’s **fCKi** from **GPCLK0 on GPIO4** (header pin 7), and
-periodically selects a chip, issues `READ_CNTR`, and reads 3 or 4 bytes
-(depending on `MDR1` counter width).
+periodically selects a chip, issues `READ_CNTR`, and reads four counter bytes
+(32‑bit mode, `MDR1 = 0x00`).
 
 ### Counter range
 
 Firmware uses **32‑bit** counter mode (`MDR1 = 0x00`). Signed headroom is
-\(2^{31}\) counts — far more than this application needs (600 PPR × 4 → 2400
+2^31 counts — far more than this application needs (600 PPR × 4 → 2400
 counts/rev on a 50 mm wheel).
 
 ---
@@ -57,15 +57,6 @@ counts/rev on a 50 mm wheel).
 | J1        | 1   | 2×20 0.1″ socket                      | Samtec `SSW-120-01-T-D` (or any 2×20 2.54 mm socket) | `Connector_PinSocket_2.54mm:PinSocket_2x20_P2.54mm_Vertical` | Pi GPIO header connector. |
 | J6        | 1   | 4‑pos PCB terminal block, 5 mm pitch, horizontal entry | Phoenix Contact `PT 1,5/ 4-5,0-H` (1935284) | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_PT-1,5-4-5.0-H_1x04_P5.00mm_Horizontal` | Foot switch — only 2 of the 4 positions are wired (GPIO 26 + GND). |
 | J2–J5     | 4   | 4‑pos PCB terminal block, 5 mm pitch, horizontal entry | Phoenix Contact `PT 1,5/ 4-5,0-H` (1935284) | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_PT-1,5-4-5.0-H_1x04_P5.00mm_Horizontal` | Encoder cables (X, X′, Y, Z). Each carries A, B, **+5 V**, GND. |
-| —         | —   | Optional: 4× (100 Ω + 1 nF)           | —                              | —                                                    | RC snubber on each A/B if encoder cables are long (>1 m). |
-| —         | —   | Optional: 1× 4.7 kΩ + 1 GPIO          | —                              | —                                                    | Pull‑up for wire‑OR’d `FLAG/` interrupt if you ever wire it. |
-
-Passives are through‑hole: disc caps and SIP resistor networks. MPNs above are stocked at Digi‑Key / Mouser / LCSC
-and are interchangeable with the equivalent parts from Kemet, Panasonic, Vishay,
-TDK, Samsung, or Yageo at the same package and dielectric. The KiCad footprints
-in the table are the standard parts shipped with KiCad's stock libraries; the
-schematic in `pcb/encoder.kicad_sch` should assign them for every component
-(U1–U4, RN1–RN4, C1–C4, C5, J1–J6) once updated for LS7366R.
 
 ---
 
@@ -97,11 +88,10 @@ Notes:
 - **Filter clock:** Tie **fCKi** (pin 2) on **U1–U4** together and connect to
   **GPIO4 / GPCLK0** (header pin 7). Configure the Pi to output a continuous
   square wave in the MHz range (see below). Per the datasheet, the internal
-  filter clock \(f_f\) must satisfy \(f_f \ge 4 f_{QA}\) where \(f_{QA}\) is the
-  maximum frequency on encoder **A** in quadrature mode; at 3.3 V, \(f_{QA}\) is
-  rated up to **4.5 MHz**, so a **9.6 MHz** (or higher) GPCLK is a comfortable
-  choice. Leave **fCKO** (pin 1) **unconnected** when **fCKi** is driven by the
-  Pi (no crystal between pins 1 and 2).
+  filter clock `f_f` must satisfy `f_f >= 4 * f_QA`, where `f_QA` is the
+  maximum frequency on encoder **A** in quadrature mode; at 3.3 V, `f_QA` is
+  rated up to **4.5 MHz**, so **~9 MHz** (or higher) GPCLK is a comfortable
+  choice.
 - LS7366R devices, the pull‑up resistors, and the foot‑switch network all run
   from the Pi's **3.3 V** rail (header pins 1 / 17). The four encoder modules
   run from the Pi's **5 V** rail (header pins 2 / 4); their open‑collector
@@ -109,8 +99,6 @@ Notes:
   inside the chip's input range. Four LS7366Rs plus the pull‑ups still keep
   3.3 V load modest; encoder current is dominated by the encoder modules
   themselves (typically tens of mA each — check your encoder spec).
-- GPIO 5 / 6 for **U3** / **U4** **SS/** can be reassigned if they conflict with
-  another HAT — any spare GPIO with suitable 3.3 V I/O is fine.
 
 ### `/boot/firmware/config.txt`
 
@@ -135,9 +123,6 @@ filter requirements above.
 
 On startup, `journalctl -u closinuf` should log `GPCLK0_CTL=… GPCLK0_DIV=0x00002222`.
 Confirm ~9 MHz on header pin 7 with a scope if counts stay at zero.
-
-**Encoder counts stuck at zero** (SPI verify OK in the journal): check encoder
-**5 V**, **A/B** at `J2`–`J5`, and ~9 MHz on header pin 7 (scope). Use the web UI at `http://127.0.0.1:3000`.
 
 ---
 
@@ -245,7 +230,7 @@ Per the firmware defaults (`main.go`): **32‑bit** counter mode (`MDR1 = 0x00`)
 ≈0.0654 mm/count.
 
 The LS7366R's max quadrature input rate at 3.3 V is **4.5 MHz** on A/B (with
-`fCKi` and filter settings that meet \(f_f \ge 4 f_{QA}\)), which at 600 PPR is
+`fCKi` and filter settings that meet `f_f >= 4 * f_QA`), which at 600 PPR is
 still far beyond anything this machine produces.
 
 ---
@@ -332,8 +317,7 @@ with debounce and ≥500 ms minimum spacing in firmware.
   GND pins; don't share encoder return current with the Pi power return if
   encoder cables are long.
 - **ESD.** Encoder inputs go to a connector and out into the world; if you
-  expect rough handling, add a TVS or 5 V Zener on each A/B line, or use the
-  optional 100 Ω + 1 nF RC snubber listed in the BOM.
+  expect rough handling, add a TVS or 5 V Zener on each A/B line.
 
 ## 9. Reference
 

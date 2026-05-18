@@ -8,7 +8,7 @@
 - **Capture Point** in the browser or a **GPIO foot switch** appends the current **(X, Y, Z)** to a list (mm internally).
 - **Save** downloads an **ASC** point cloud file, which can be imported into FreeCAD as a point cloud. 
 - **Units** cycles mm → m → in → ft. **Zero** clears counts and points.
-- Optional **short beep** on capture if speakers are available.
+- **Short beep** on capture when audio output is available (speakers or HDMI).
 
 ## Hardware
 
@@ -29,28 +29,23 @@ See [HARDWARE.md](HARDWARE.md).
    sudo ./install.sh
    ```
 
-3. Reboot if the installer prompts you to (it offers when boot config changed).
+3. Reboot if the installer prompts you to. 
 
 What the script does:
 
-- Enables **SPI** and relocates kernel CE pins off GPIO 8/7 (`dtoverlay=spi0-2cs,cs0_pin=12,cs1_pin=13`) in `/boot/firmware/config.txt` (skips lines already present).
-- Installs **`golang-go`** via `apt` if `go` is missing.
+- Enables **SPI** and relocates kernel CE pins off GPIO 8/7 (`dtoverlay=spi0-2cs,cs0_pin=12,cs1_pin=13`) in `/boot/firmware/config.txt`.
+- Installs **`alsa-utils`** (`aplay` for capture beep) and **`golang-go`** if `go` is missing.
 - Builds **`./closinuf`** in the repo.
 - Adds the install user to **`spi`** and **`gpio`** groups (for local `go build` / debugging without the service).
-- Installs **closinuf** **systemd** services: **`closinuf.service`** (app on :3000, runs as **root** for GPCLK/SPI/GPIO), **`closinuf-browser.service`** (Chromium as install user)
-- Programs **GPCLK0 ~9 MHz** on GPIO4 in Go at startup (`gpclk.go`)
+- Installs **closinuf** **systemd** services: **`closinuf.service`** (app on :3000, runs as **root** for `/dev/mem` GPCLK, SPI, and GPIO), **`closinuf-browser.service`** (Chromium as install user)
 - Prompts to **reboot** when SPI settings were added to `config.txt` (first install)
 
 Useful commands:
 
 ```bash
-systemctl status closinuf closinuf-browser
-journalctl -u closinuf -f
+sudo systemctl status closinuf closinuf-browser
+sudo journalctl -u closinuf -f
 ```
-
-**Touch keyboard:** fullscreen Chromium can block some on‑screen keyboards; if the filename field stays hidden behind the keyboard, try launching the browser **maximized** instead of fullscreen (edit the `chromium` line in `/usr/local/bin/closinuf-browser.sh`). The UI adds extra **bottom padding** so you can scroll content above the keyboard.
-
-**Capture beep:** install **`alsa-utils`** (`aplay`) so the Pi can play the short tone on capture.
 
 ## Manual run (development)
 
