@@ -1,10 +1,10 @@
-<p align="center">
-  <img src="assets/screen.png" alt="closinuf 3D point scanner UI">
-</p>
-
 # closinuf
 
 **3D point scanner** — live 3D coordinates from four quadrature encoders on a Raspberry Pi, with a small web UI, foot‑switch capture, and FreeCAD‑friendly export.
+
+<p align="center">
+  <img src="assets/screen.png" alt="closinuf 3D point scanner UI">
+</p>
 
 ## What it does
 
