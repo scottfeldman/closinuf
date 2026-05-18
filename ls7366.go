@@ -301,13 +301,18 @@ func (b *CounterBank) ClearAll() error {
 }
 
 func initCounters() error {
-	if err := initGPCLK(); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: GPCLK0 on GPIO4: %v (encoder filter clock may be inactive)\n", err)
-	}
-
+	// SPI and chip init first, then GPCLK (DIV must be written after a full kill/BUSY cycle).
 	bank, err := openCounterBank()
 	if err != nil {
 		return err
+	}
+	if err := initGPCLK(); err != nil {
+		bank.Close()
+		return fmt.Errorf("GPCLK0 on GPIO4: %w", err)
+	}
+	if !gpclkEnabledInHW() {
+		bank.Close()
+		return fmt.Errorf("GPCLK0 not enabled after setup")
 	}
 	counterBank = bank
 	fmt.Fprintf(os.Stderr, "LS7366R counters initialized on SPI0 (32-bit mode)\n")

@@ -33,19 +33,21 @@ See [HARDWARE.md](HARDWARE.md).
 
 What the script does:
 
-- Enables **SPI** and relocates kernel CE pins off GPIO 8/7 (`dtoverlay=spi0-2cs,cs0_pin=12,cs1_pin=13`) in `/boot/firmware/config.txt` (backs up first; skips lines already present).
+- Enables **SPI** and relocates kernel CE pins off GPIO 8/7 (`dtoverlay=spi0-2cs,cs0_pin=12,cs1_pin=13`) in `/boot/firmware/config.txt` (skips lines already present).
 - Installs **`golang-go`** via `apt` if `go` is missing.
 - Builds **`./closinuf`** in the repo.
-- Adds the install user to **`spi`** and **`gpio`** groups when those groups exist.
-- Installs **closinuf** **systemd** services: **`closinuf.service`** (app on :3000), **`closinuf-browser.service`** (open Chromium after boot)
-- Runs **`closinuf-setup-gpclk.sh`** as **ExecStartPre** (root) for GPCLK0 ~9 MHz on GPIO4; `main` programs GPCLK only when run as root
-- Offers to **reboot** when SPI/GPCLK settings were added (`sudo ./install.sh --reboot` to reboot without prompting)
+- Adds the install user to **`spi`** and **`gpio`** groups (for local `go build` / debugging without the service).
+- Installs **closinuf** **systemd** services: **`closinuf.service`** (app on :3000, runs as **root** for GPCLK/SPI/GPIO), **`closinuf-browser.service`** (Chromium as install user)
+- Programs **GPCLK0 ~9 MHz** on GPIO4 in Go at startup (`gpclk.go`)
+- Prompts to **reboot** when SPI settings were added to `config.txt` (first install)
 
 Useful commands:
 
 ```bash
 systemctl status closinuf closinuf-browser
 journalctl -u closinuf -f
+sudo ./scripts/check-gpclk.sh      # optional: verify GPCLK0 on GPIO4
+./scripts/watch-counters.sh      # optional: live counts in the terminal
 ```
 
 **Touch keyboard:** fullscreen Chromium can block some on‑screen keyboards; if the filename field stays hidden behind the keyboard, try launching the browser **maximized** instead of fullscreen (edit the `chromium` line in `/usr/local/bin/closinuf-browser.sh`). The UI adds extra **bottom padding** so you can scroll content above the keyboard.
@@ -55,13 +57,11 @@ journalctl -u closinuf -f
 ## Manual run (development)
 
 ```bash
-git clone https://github.com/scottfeldman/closinuf.git
-cd closinuf
 go build -o closinuf .
-./closinuf
+sudo ./closinuf
 ```
 
-Open `http://127.0.0.1:3000`. Use `sudo` only if your user cannot access GPIO.
+Open `http://127.0.0.1:3000`. Root is required for GPCLK setup (`/dev/mem`); the systemd service runs as root for the same reason.
 
 ## ASC export
 

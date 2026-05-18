@@ -33,7 +33,7 @@ type encoderDebugResponse struct {
 func readEncoderDebug() encoderDebugResponse {
 	labels := []string{"X", "X'", "Y", "Z"}
 	resp := encoderDebugResponse{
-		Hint: "Turn one encoder and call again (or /api/encoder/debug/probe). If live_count stays 0 but mdr0/mdr1 match, check encoder 5V and A/B wiring to the screw terminals.",
+		Hint: "Turn one encoder and call again (or /api/encoder/debug/probe). If live_count stays 0 but mdr0/mdr1 match, check GPCLK (sudo ./scripts/check-gpclk.sh), encoder 5V, and A/B wiring.",
 	}
 
 	if counterBank == nil {

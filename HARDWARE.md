@@ -40,17 +40,9 @@ periodically selects a chip, issues `READ_CNTR`, and reads 3 or 4 bytes
 
 ### Counter range
 
-The LS7366R `CNTR` is programmable for 8 / 16 / 24 / 32‑bit operation via `MDR1`.
-If you use **3‑byte (24‑bit) mode** to match the previous LS7466 behavior, with
-600 PPR encoders at x4 quadrature (2400 counts/rev) on a 50 mm wheel (≈157.08 mm/rev),
-interpreting `CNTR` as signed two's complement:
-
-- Half range: \(2^{23}\) = 8 388 608 counts ≈ **3 495 revolutions** in either
-  direction from zero
-- Linear travel: ≈ **549 m (≈1801 ft) one‑way** before wrap
-
-In **4‑byte (32‑bit) mode**, signed headroom is \(2^{31}\) counts — far more than
-this application needs.
+Firmware uses **32‑bit** counter mode (`MDR1 = 0x00`). Signed headroom is
+\(2^{31}\) counts — far more than this application needs (600 PPR × 4 → 2400
+counts/rev on a 50 mm wheel).
 
 ---
 
@@ -135,50 +127,31 @@ Reboot after editing; `config.txt` is read only at boot. Verify with `ls /dev/sp
 
 **GPCLK on GPIO4 (pin 7):** On **Raspberry Pi 4 (BCM2711)**, closinuf programs
 GPCLK0 at **~9 MHz** from the **19.2 MHz oscillator** via `/dev/mem` in
-`gpclk_linux.go` at startup (`closinuf-setup-gpclk.sh` runs as `ExecStartPre`
-backup).
+`gpclk.go` at startup. The **`closinuf.service`** unit runs the app as
+**root** so register access works without a separate setup script.
 
 See [GPCLK / pinout](https://pinout.xyz/pinout/gpclk) and the LS7366R `fCKi`
 filter requirements above.
 
-**Verify GPCLK is running** (on the Pi):
+**Verify GPCLK** (optional):
 
 ```bash
 sudo ./scripts/check-gpclk.sh
 ```
 
-Checks: GPIO4 muxed to GPCLK0, GPCLK0 enable bit in the clock manager. **Pin 7**
-should show ~9 MHz on a scope if the clock is alive.
+Expect `GPCLK0_DIV = 0x00002222` and GPIO4 muxed to GPCLK0. On startup,
+`journalctl -u closinuf` should log `GPCLK0_CTL=… GPCLK0_DIV=0x00002222`.
 
-**Encoder counts stuck at zero** (SPI verify OK):
+**Encoder counts stuck at zero** (SPI verify OK in the journal):
 
 ```bash
 curl -s http://127.0.0.1:3000/api/encoder/debug | jq
-# turn one encoder, then:
 curl -s 'http://127.0.0.1:3000/api/encoder/debug/probe?seconds=2' | jq
 ./scripts/watch-counters.sh
 ```
 
-`live_count` should change when you turn that axis. If `rx_hex` is all `ff` or zeros
-and `mdr0`/`mdr1` look right, check encoder **5 V**, **A/B** at `J2`–`J5`, and
-**GPCLK** on pin 7 (`sudo ./scripts/check-gpclk.sh`).
-
-Quick functional test — closinuf programs GPCLK via `/dev/mem` only as **root**:
-
-```bash
-sudo systemctl stop closinuf
-sudo ./closinuf
-# another terminal: curl -s http://127.0.0.1:3000/api/encoder | jq
-```
-
-`install.sh` runs **`closinuf-setup-gpclk.sh`** as **ExecStartPre** (root).
-The app only touches `/dev/mem` when started as **root** (e.g. `sudo ./closinuf`);
-the service user relies on that pre-start script and `/run/closinuf-gpclk.ok`.
-
-```bash
-sudo ./scripts/setup-gpclk.sh    # manual setup (same registers as main)
-sudo ./scripts/check-gpclk.sh    # verify CTL + GPIO FSEL
-```
+If `live_count` stays 0 but `mdr0`/`mdr1` match, check encoder **5 V**, **A/B** at
+`J2`–`J5`, and ~9 MHz on header pin 7 (scope).
 
 ---
 
@@ -240,20 +213,16 @@ Per the LS7366R datasheet (Figure 2 / setup notes):
   implying roughly **≤ ~4 MHz** SCK unless you verify timing at your supply and
   temperature.
 
-### Recommended register configuration
+### Register configuration (firmware)
 
-Configure **each** of U1–U4 the same way. Production firmware uses **4‑byte
-(32‑bit)** mode. Example for **3‑byte (24‑bit)** counter width (legacy / optional):
+Configure **each** of U1–U4 the same way (`ls7366.go`):
 
 | Register | Value  | Meaning |
 |----------|--------|---------|
 | `MDR0`   | `0x03` | x4 quadrature, free‑running, index disabled, filter divide = 1 |
-| `MDR1`   | `0x01` | 3‑byte counter mode, counting enabled, flags off |
+| `MDR1`   | `0x00` | 32‑bit counter mode, counting enabled |
 
-Use **4‑byte mode** (`MDR1` = `0x00` for width nibble) if you want the full
-32‑bit counter; adjust read length to four data bytes after `READ_CNTR`.
-
-Instruction bytes (datasheet / application listing):
+Instruction bytes:
 
 ```
 WRITE_MDR0 = 0x88
@@ -264,33 +233,10 @@ CLR_CNTR   = 0x20
 READ_CNTR  = 0x60   ; latches CNTR → OTR, then clocks out OTR on MISO
 ```
 
-Initialization sequence **per chip**:
+Initialization **per chip**: `WRITE_MDR1`, `WRITE_MDR0`, `CLR_CNTR`. Startup runs
+**`verifyChip`**: `READ_MDR1` / `READ_MDR0` must match, then `READ_CNTR` must be 0.
 
-```
-SS/↓  WRITE_MDR1 0x01  SS/↑     ; 3-byte mode, counting enabled
-SS/↓  WRITE_MDR0 0x03  SS/↑     ; x4 quadrature, free-run, no index
-SS/↓  CLR_CNTR          SS/↑   ; clear counter
-```
-
-At startup, firmware runs **`verifyChip`** on each IC: `READ_MDR1` / `READ_MDR0`
-must match the written values, then `READ_CNTR` must be 0 after clear. Failure
-aborts startup with a log line naming the chip (U1–U4).
-
-Periodic read (3‑byte mode):
-
-```
-SS/↓  READ_CNTR  then clock 3 dummy / read bytes on MISO  SS/↑
-```
-
-Sign‑extend the 24‑bit value to a Go `int32`:
-
-```go
-raw := uint32(b[0])<<16 | uint32(b[1])<<8 | uint32(b[2])
-if raw&0x800000 != 0 {
-    raw |= 0xff000000      // sign-extend
-}
-count := int32(raw)
-```
+Periodic read: `READ_CNTR` plus four data bytes on MISO (32‑bit mode).
 
 ---
 

@@ -12,9 +12,11 @@ read_reg() {
 	python3 - "$1" <<'PY'
 import mmap, os, sys
 addr = int(sys.argv[1], 0)
+page = addr & ~0xFFF
+off = addr - page
 fd = os.open("/dev/mem", os.O_RDWR | os.O_SYNC)
-m = mmap.mmap(fd, 4096, mmap.MAP_SHARED, mmap.PROT_READ, offset=addr)
-val = int.from_bytes(m[0:4], "little")
+m = mmap.mmap(fd, 4096, mmap.MAP_SHARED, mmap.PROT_READ, offset=page)
+val = int.from_bytes(m[off : off + 4], "little")
 print(f"0x{val:08x}")
 os.close(fd)
 PY
@@ -26,7 +28,7 @@ if command -v pinctrl >/dev/null 2>&1; then
 	if pinctrl get 4 | grep -qE 'GPCLK|ALT|alt4'; then
 		echo "OK: GPIO4 mux looks like GPCLK"
 	else
-		echo "WARN: GPIO4 is not GPCLK — run: sudo ./scripts/setup-gpclk.sh"
+		echo "WARN: GPIO4 is not GPCLK — run: sudo systemctl restart closinuf"
 	fi
 fi
 
@@ -44,7 +46,14 @@ ctl_val=$((ctl))
 if (( (ctl_val & 0x10) != 0 )); then
 	echo "OK: GPCLK0 enable bit (CTL bit 4) is set"
 else
-	echo "FAIL: GPCLK0 not enabled — run: sudo ./scripts/setup-gpclk.sh"
+	echo "FAIL: GPCLK0 not enabled — run: sudo systemctl restart closinuf"
+fi
+
+div_val=$((motion_div))
+if (( (motion_div & 0x00ffff) == 0x2222 )); then
+	echo "OK: GPCLK0_DIV looks programmed (0x00002222)"
+else
+	echo "FAIL: GPCLK0_DIV not programmed (want 0x00002222) — run: sudo systemctl restart closinuf"
 fi
 
 fsel_val=$((fsel))
@@ -60,6 +69,6 @@ echo
 echo "=== Scope ==="
 echo "Pin 7 should show ~9.6 MHz when GPCLK0 is enabled."
 echo
-echo "=== After setup ==="
+echo "=== If GPCLK failed ==="
 echo "  sudo systemctl restart closinuf"
 echo "  curl -s http://127.0.0.1:3000/api/encoder | jq   # turn encoders"

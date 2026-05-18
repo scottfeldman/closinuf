@@ -1,15 +1,7 @@
 #!/usr/bin/env bash
 # Install closinuf as a systemd service and open the default browser on :3000 at desktop login.
 # Run from the repo root: sudo ./install.sh
-# Use --reboot to reboot without prompting when boot config changed.
 set -euo pipefail
-
-DO_REBOOT=0
-for arg in "$@"; do
-	case "${arg}" in
-	--reboot) DO_REBOOT=1 ;;
-	esac
-done
 
 if [[ "${EUID}" -ne 0 ]]; then
 	echo "Run as root, e.g.: sudo $0" >&2
@@ -28,29 +20,18 @@ if [[ -z "${USER_HOME}" || ! -d "${USER_HOME}" ]]; then
 	exit 1
 fi
 
-CONFIG_TXT=""
-for candidate in /boot/firmware/config.txt /boot/config.txt; do
-	if [[ -f "${candidate}" ]]; then
-		CONFIG_TXT="${candidate}"
-		break
-	fi
-done
+CONFIG_TXT="/boot/firmware/config.txt"
+if [[ ! -f "${CONFIG_TXT}" ]]; then
+	echo "Error: ${CONFIG_TXT} not found (not a Raspberry Pi OS boot partition?)." >&2
+	exit 1
+fi
 
 CONFIG_NEEDS_REBOOT=0
-CONFIG_BACKED_UP=0
 
 ensure_config_line() {
 	local line="$1"
-	if [[ -z "${CONFIG_TXT}" ]]; then
-		echo "Warning: config.txt not found; add manually: ${line}" >&2
-		return 1
-	fi
 	if grep -qF "${line}" "${CONFIG_TXT}"; then
 		return 0
-	fi
-	if [[ "${CONFIG_BACKED_UP}" -eq 0 ]]; then
-		cp -a "${CONFIG_TXT}" "${CONFIG_TXT}.closinuf-bak"
-		CONFIG_BACKED_UP=1
 	fi
 	echo "${line}" >> "${CONFIG_TXT}"
 	echo "Added to ${CONFIG_TXT}: ${line}"
@@ -59,27 +40,9 @@ ensure_config_line() {
 
 configure_boot() {
 	echo "Configuring boot (SPI)..."
-	if [[ -z "${CONFIG_TXT}" ]]; then
-		echo "Warning: /boot/firmware/config.txt not found; enable SPI manually." >&2
-		CONFIG_NEEDS_REBOOT=1
-		return
-	fi
-
-	if ! grep -qE '^dtparam=spi=on' "${CONFIG_TXT}"; then
-		ensure_config_line "dtparam=spi=on"
-	fi
-
+	ensure_config_line "dtparam=spi=on"
 	# Kernel SPI CE defaults to GPIO 8/7; the HAT uses those for manual SS/.
-	# Move hardware CE to unused pins so gpiocdev can drive 8, 7, 5, 6.
-	if ! grep -qE 'dtoverlay=spi0.*cs0_pin' "${CONFIG_TXT}"; then
-		ensure_config_line "dtoverlay=spi0-2cs,cs0_pin=12,cs1_pin=13"
-	fi
-
-	if grep -qE '^dtoverlay=closinuf-gpclk' "${CONFIG_TXT}"; then
-		sed -i '/^dtoverlay=closinuf-gpclk/d' "${CONFIG_TXT}"
-		echo "Removed obsolete dtoverlay=closinuf-gpclk from ${CONFIG_TXT}"
-		CONFIG_NEEDS_REBOOT=1
-	fi
+	ensure_config_line "dtoverlay=spi0-2cs,cs0_pin=12,cs1_pin=13"
 }
 
 configure_boot
@@ -100,8 +63,6 @@ for grp in spi gpio; do
 		usermod -aG "${grp}" "${APP_USER}" 2>/dev/null || true
 	fi
 done
-
-install -m 0755 "${INSTALL_DIR}/scripts/setup-gpclk.sh" /usr/local/bin/closinuf-setup-gpclk.sh
 
 cat << 'BROWSER_SCRIPT' > /usr/local/bin/closinuf-browser.sh
 #!/usr/bin/env sh
@@ -141,12 +102,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=${APP_USER}
-Group=${APP_USER}
 WorkingDirectory=${INSTALL_DIR}
-Environment=HOME=${USER_HOME}
-ExecStartPre=/usr/local/bin/closinuf-setup-gpclk.sh
-PermissionsStartOnly=yes
 ExecStart=${INSTALL_DIR}/closinuf
 Restart=on-failure
 RestartSec=3
@@ -169,19 +125,12 @@ echo "  Browser: systemctl status closinuf-browser"
 echo "  Logs:    journalctl -u closinuf -f"
 if [[ "${CONFIG_NEEDS_REBOOT}" -eq 1 ]]; then
 	echo
-	echo "Reboot required — boot config changed for SPI / GPCLK."
-	if [[ "${DO_REBOOT}" -eq 1 ]]; then
-		echo "Rebooting now (--reboot)..."
-		reboot
-	elif [[ -t 0 ]]; then
+	echo "Reboot required — boot config changed (SPI)."
+	if [[ -t 0 ]]; then
 		read -r -p "Reboot now? [Y/n] " ans
 		if [[ -z "${ans}" || "${ans}" =~ ^[Yy]$ ]]; then
 			reboot
 		fi
-		echo "Reboot when ready: sudo reboot"
-	else
-		echo "Re-run with --reboot or run: sudo reboot"
 	fi
-else
-	echo "Reboot optional — run sudo reboot for a clean browser autostart."
+	echo "Run: sudo reboot"
 fi
