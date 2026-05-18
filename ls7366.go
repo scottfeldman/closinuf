@@ -59,30 +59,20 @@ type spiIocTransfer struct {
 	pad            uint8
 }
 
-// CounterBank drives four LS7366R chips on SPI0 with manual chip selects.
-type CounterBank struct {
+// counterBank drives four LS7366R chips on SPI0 with manual chip selects.
+type counterBank struct {
 	spiFd   int
 	csLines *gpiocdev.Lines
 	mu      sync.Mutex
 }
 
-var counterBank *CounterBank
-
-// chipDiag records the last SPI read attempt per chip (for /api/encoder/debug).
-type chipDiag struct {
-	readOK      int
-	readFail    int
-	lastErr     string
-	lastRX      [5]byte
-}
-
-var chipDiags [4]chipDiag
+var bank *counterBank
 
 func spiIOCMessage(n int) uintptr {
 	return spiIOW(0, n*spiIocTransferBytes)
 }
 
-func openCounterBank() (*CounterBank, error) {
+func openCounterBank() (*counterBank, error) {
 	fd, err := unix.Open(spiDevPath, unix.O_RDWR, 0)
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w (enable SPI in /boot/firmware/config.txt, reboot)", spiDevPath, err)
@@ -121,15 +111,15 @@ func openCounterBank() (*CounterBank, error) {
 		)
 	}
 
-	bank := &CounterBank{spiFd: fd, csLines: csLines}
+	bank := &counterBank{spiFd: fd, csLines: csLines}
 	if err := bank.initAll(); err != nil {
-		bank.Close()
+		bank.close()
 		return nil, err
 	}
 	return bank, nil
 }
 
-func (b *CounterBank) Close() {
+func (b *counterBank) close() {
 	if b.csLines != nil {
 		b.csLines.Close()
 		b.csLines = nil
@@ -140,7 +130,7 @@ func (b *CounterBank) Close() {
 	}
 }
 
-func (b *CounterBank) transfer(chip int, tx, rx []byte) error {
+func (b *counterBank) transfer(chip int, tx, rx []byte) error {
 	if len(tx) != len(rx) {
 		return fmt.Errorf("tx/rx length mismatch")
 	}
@@ -176,19 +166,19 @@ func csMask(chip int) []int {
 	return m
 }
 
-func (b *CounterBank) writeReg(chip int, cmd, data byte) error {
+func (b *counterBank) writeReg(chip int, cmd, data byte) error {
 	tx := []byte{cmd, data}
 	rx := make([]byte, 2)
 	return b.transfer(chip, tx, rx)
 }
 
-func (b *CounterBank) command(chip int, cmd byte) error {
+func (b *counterBank) command(chip int, cmd byte) error {
 	tx := []byte{cmd}
 	rx := make([]byte, 1)
 	return b.transfer(chip, tx, rx)
 }
 
-func (b *CounterBank) verifyChip(chip int) error {
+func (b *counterBank) verifyChip(chip int) error {
 	mdr1, err := b.readReg8(chip, ls7366ReadMDR1)
 	if err != nil {
 		return fmt.Errorf("U%d READ_MDR1: %w", chip+1, err)
@@ -205,7 +195,7 @@ func (b *CounterBank) verifyChip(chip int) error {
 		return fmt.Errorf("U%d READ_MDR0: got 0x%02x want 0x%02x", chip+1, mdr0, ls7366MDR0)
 	}
 
-	count, err := b.ReadCounter(chip)
+	count, err := b.readCounter(chip)
 	if err != nil {
 		return fmt.Errorf("U%d READ_CNTR: %w", chip+1, err)
 	}
@@ -217,7 +207,7 @@ func (b *CounterBank) verifyChip(chip int) error {
 	return nil
 }
 
-func (b *CounterBank) initChip(chip int) error {
+func (b *counterBank) initChip(chip int) error {
 	if err := b.writeReg(chip, ls7366WriteMDR1, ls7366MDR1); err != nil {
 		return err
 	}
@@ -230,7 +220,7 @@ func (b *CounterBank) initChip(chip int) error {
 	return b.verifyChip(chip)
 }
 
-func (b *CounterBank) initAll() error {
+func (b *counterBank) initAll() error {
 	for chip := 0; chip < 4; chip++ {
 		if err := b.initChip(chip); err != nil {
 			return fmt.Errorf("init U%d: %w", chip+1, err)
@@ -248,7 +238,7 @@ func parseCounterRX(rx []byte) (int32, int32) {
 	return a, b
 }
 
-func (b *CounterBank) readReg8(chip int, cmd byte) (byte, error) {
+func (b *counterBank) readReg8(chip int, cmd byte) (byte, error) {
 	tx := []byte{cmd, 0xff}
 	rx := make([]byte, 2)
 	if err := b.transfer(chip, tx, rx); err != nil {
@@ -257,41 +247,25 @@ func (b *CounterBank) readReg8(chip int, cmd byte) (byte, error) {
 	return rx[1], nil
 }
 
-func (b *CounterBank) ReadCounterRaw(chip int) (count int32, rx []byte, err error) {
+func (b *counterBank) readCounter(chip int) (int32, error) {
 	tx := make([]byte, 5)
-	rx = make([]byte, 5)
+	rx := make([]byte, 5)
 	tx[0] = ls7366ReadCNTR
 	for i := 1; i < 5; i++ {
 		tx[i] = 0xff
 	}
 	if err := b.transfer(chip, tx, rx); err != nil {
-		return 0, rx, err
+		return 0, err
 	}
-	count, _ = parseCounterRX(rx)
-	return count, rx, nil
+	count, _ := parseCounterRX(rx)
+	return count, nil
 }
 
-func (b *CounterBank) ReadCounter(chip int) (int32, error) {
-	count, rx, err := b.ReadCounterRaw(chip)
-	if chip >= 0 && chip < len(chipDiags) {
-		d := &chipDiags[chip]
-		if err != nil {
-			d.readFail++
-			d.lastErr = err.Error()
-		} else {
-			d.readOK++
-			d.lastErr = ""
-			copy(d.lastRX[:], rx)
-		}
-	}
-	return count, err
-}
-
-func (b *CounterBank) ReadStatus(chip int) (byte, error) {
+func (b *counterBank) readStatus(chip int) (byte, error) {
 	return b.readReg8(chip, ls7366ReadSTR)
 }
 
-func (b *CounterBank) ClearAll() error {
+func (b *counterBank) clearAll() error {
 	for chip := 0; chip < 4; chip++ {
 		if err := b.command(chip, ls7366ClrCNTR); err != nil {
 			return fmt.Errorf("clear U%d: %w", chip+1, err)
@@ -302,19 +276,19 @@ func (b *CounterBank) ClearAll() error {
 
 func initCounters() error {
 	// SPI and chip init first, then GPCLK (DIV must be written after a full kill/BUSY cycle).
-	bank, err := openCounterBank()
+	cb, err := openCounterBank()
 	if err != nil {
 		return err
 	}
 	if err := initGPCLK(); err != nil {
-		bank.Close()
+		cb.close()
 		return fmt.Errorf("GPCLK0 on GPIO4: %w", err)
 	}
 	if !gpclkEnabledInHW() {
-		bank.Close()
+		cb.close()
 		return fmt.Errorf("GPCLK0 not enabled after setup")
 	}
-	counterBank = bank
+	bank = cb
 	fmt.Fprintf(os.Stderr, "LS7366R counters initialized on SPI0 (32-bit mode)\n")
 	return nil
 }
@@ -325,34 +299,37 @@ func pollCountersForever() {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		if counterBank == nil {
+		if bank == nil {
 			continue
 		}
-		counterBank.mu.Lock()
+		bank.mu.Lock()
 		for chip, enc := range encoders {
-			if enc == nil {
-				continue
-			}
-			count, err := counterBank.ReadCounter(chip)
+			count, err := bank.readCounter(chip)
 			if err != nil {
-				if chipDiags[chip].readFail == 1 || chipDiags[chip].readFail%100 == 0 {
-					fmt.Fprintf(os.Stderr, "U%d READ_CNTR: %v\n", chip+1, err)
-				}
+				fmt.Fprintf(os.Stderr, "U%d READ_CNTR: %v\n", chip+1, err)
 				continue
 			}
 			enc.mu.Lock()
 			enc.counter = int(count)
+			now := time.Now()
+			elapsedSec := now.Sub(enc.lastReadTime).Seconds()
+			if elapsedSec > 0 {
+				delta := enc.counter - enc.lastReadCount
+				enc.rpm = (float64(delta) / countsPerRev) * (60.0 / elapsedSec)
+			}
+			enc.lastReadCount = enc.counter
+			enc.lastReadTime = now
 			enc.mu.Unlock()
 		}
-		counterBank.mu.Unlock()
+		bank.mu.Unlock()
 	}
 }
 
 func clearHardwareCounters() error {
-	if counterBank == nil {
+	if bank == nil {
 		return fmt.Errorf("counter bank not initialized")
 	}
-	counterBank.mu.Lock()
-	defer counterBank.mu.Unlock()
-	return counterBank.ClearAll()
+	bank.mu.Lock()
+	defer bank.mu.Unlock()
+	return bank.clearAll()
 }

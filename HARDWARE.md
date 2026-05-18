@@ -133,25 +133,11 @@ GPCLK0 at **~9 MHz** from the **19.2 MHz oscillator** via `/dev/mem` in
 See [GPCLK / pinout](https://pinout.xyz/pinout/gpclk) and the LS7366R `fCKi`
 filter requirements above.
 
-**Verify GPCLK** (optional):
+On startup, `journalctl -u closinuf` should log `GPCLK0_CTL=… GPCLK0_DIV=0x00002222`.
+Confirm ~9 MHz on header pin 7 with a scope if counts stay at zero.
 
-```bash
-sudo ./scripts/check-gpclk.sh
-```
-
-Expect `GPCLK0_DIV = 0x00002222` and GPIO4 muxed to GPCLK0. On startup,
-`journalctl -u closinuf` should log `GPCLK0_CTL=… GPCLK0_DIV=0x00002222`.
-
-**Encoder counts stuck at zero** (SPI verify OK in the journal):
-
-```bash
-curl -s http://127.0.0.1:3000/api/encoder/debug | jq
-curl -s 'http://127.0.0.1:3000/api/encoder/debug/probe?seconds=2' | jq
-./scripts/watch-counters.sh
-```
-
-If `live_count` stays 0 but `mdr0`/`mdr1` match, check encoder **5 V**, **A/B** at
-`J2`–`J5`, and ~9 MHz on header pin 7 (scope).
+**Encoder counts stuck at zero** (SPI verify OK in the journal): check encoder
+**5 V**, **A/B** at `J2`–`J5`, and ~9 MHz on header pin 7 (scope). Use the web UI at `http://127.0.0.1:3000`.
 
 ---
 

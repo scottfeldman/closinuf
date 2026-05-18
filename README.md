@@ -46,8 +46,6 @@ Useful commands:
 ```bash
 systemctl status closinuf closinuf-browser
 journalctl -u closinuf -f
-sudo ./scripts/check-gpclk.sh      # optional: verify GPCLK0 on GPIO4
-./scripts/watch-counters.sh      # optional: live counts in the terminal
 ```
 
 **Touch keyboard:** fullscreen Chromium can block some on‑screen keyboards; if the filename field stays hidden behind the keyboard, try launching the browser **maximized** instead of fullscreen (edit the `chromium` line in `/usr/local/bin/closinuf-browser.sh`). The UI adds extra **bottom padding** so you can scroll content above the keyboard.

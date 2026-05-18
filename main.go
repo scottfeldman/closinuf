@@ -9,177 +9,24 @@ import (
 	"os/exec"
 	"os/signal"
 	"strings"
-	"sync"
 	"syscall"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	g "maragu.dev/gomponents"
 	hx "maragu.dev/gomponents-htmx"
 	. "maragu.dev/gomponents/html"
-	"github.com/warthog618/go-gpiocdev"
-)
-
-type Encoder struct {
-	counter       int // hardware counter value (signed)
-	lastReadTime  time.Time
-	lastReadCount int
-	rpm           float64
-	label         string
-	chip          int // 0..3 → U1..U4
-	mu            sync.RWMutex
-}
-
-const (
-	countsPerRev       = 2400.0                  // 600 PPR × 4 (full quadrature)
-	wheelDiameter      = 50.0                    // wheel diameter in mm
-	wheelCircumference = math.Pi * wheelDiameter // ≈ 157.08mm
-)
-
-type EncoderData struct {
-	X  EncoderValues `json:"x"`
-	Xp EncoderValues `json:"x'"`
-	Y  EncoderValues `json:"y"`
-	Z  EncoderValues `json:"z"`
-}
-
-type EncoderValues struct {
-	Count    int     `json:"count"`
-	RPM      float64 `json:"rpm"`
-	Distance float64 `json:"distance"` // distance in mm from zero
-	Label    string  `json:"label"`
-}
-
-type Point struct {
-	X float64 `json:"x"`
-	Y float64 `json:"y"`
-	Z float64 `json:"z"`
-}
-
-var (
-	encoders           [4]*Encoder // X=0, X'=1, Y=2, Z=3
-	points             []Point      // accumulated points
-	pointsMu           sync.RWMutex
-	lastPointAddedTime time.Time
-	btnEventMu         sync.Mutex
-	btnPressHandled    bool // Track if we've already handled the current press
 )
 
 func main() {
-	const (
-		chipName       = "gpiochip0"
-		pointBtnOffset = 26 // GPIO26 - physical button for adding points (NO contact)
-	)
-
-	encoders[0] = &Encoder{label: "X", chip: 0}
-	encoders[1] = &Encoder{label: "X'", chip: 1}
-	encoders[2] = &Encoder{label: "Y", chip: 2}
-	encoders[3] = &Encoder{label: "Z", chip: 3}
-
-	now := time.Now()
-	for _, enc := range encoders {
-		if enc != nil {
-			enc.mu.Lock()
-			enc.lastReadTime = now
-			enc.lastReadCount = 0
-			enc.mu.Unlock()
-		}
-	}
-
-	if err := initCounters(); err != nil {
+	if err := initEncoders(); err != nil {
 		fmt.Fprintf(os.Stderr, "Fatal: %v\n", err)
 		os.Exit(1)
 	}
-	go pollCountersForever()
-
-	// Setup GPIO for physical Point button
-	pointBtnHandler := func(evt gpiocdev.LineEvent) {
-		now := time.Now()
-
-		btnEventMu.Lock()
-		defer btnEventMu.Unlock()
-
-		// Button has external 4.7K pullup: HIGH when not pressed, LOW when pressed (NO contact)
-		if evt.Type == gpiocdev.LineEventFallingEdge {
-			// State-based debouncing: only trigger once per press-release cycle
-			if btnPressHandled {
-				return
-			}
-
-			// Time-based debouncing: require minimum time since last point was added
-			// This prevents multiple points from a single button press even with heavy bouncing
-			timeSinceLastPoint := now.Sub(lastPointAddedTime)
-			if timeSinceLastPoint < 500*time.Millisecond {
-				return
-			}
-
-			// Mark this press as handled
-			btnPressHandled = true
-
-			// Get current encoder data
-			data := getEncoderData()
-
-			// Add point with current X, Y, Z distances
-			pointsMu.Lock()
-			points = append(points, Point{
-				X: data.X.Distance,
-				Y: data.Y.Distance,
-				Z: data.Z.Distance,
-			})
-			pointsMu.Unlock()
-
-			// Update timestamp when point is actually added
-			lastPointAddedTime = now
-			playBeep()
-		} else if evt.Type == gpiocdev.LineEventRisingEdge {
-			// On release, reset the handled flag so next press can be processed
-			if btnPressHandled {
-				btnPressHandled = false
-			}
-		}
+	if err := initPointButton(); err != nil {
+		fmt.Fprintf(os.Stderr, "Fatal: %v\n", err)
+		os.Exit(1)
 	}
-
-	var err error
-	_, err = gpiocdev.RequestLines(chipName,
-		[]int{pointBtnOffset},
-		gpiocdev.AsInput,
-		gpiocdev.WithEventHandler(pointBtnHandler),
-		gpiocdev.WithBothEdges,
-		gpiocdev.WithConsumer("point-button"),
-	)
-	if err != nil {
-		os.Stderr.WriteString("Warning: Failed to initialize point button GPIO (GPIO" + fmt.Sprintf("%d", pointBtnOffset) + "): " + err.Error() + "\n")
-		os.Stderr.WriteString("Physical button will not be available. Web interface Point button will still work.\n")
-	}
-
-	// Periodic RPM calculation goroutine for all encoders
-	go func() {
-		ticker := time.NewTicker(100 * time.Millisecond) // Update RPM every 100ms
-		defer ticker.Stop()
-
-		for range ticker.C {
-			for _, enc := range encoders {
-				if enc == nil {
-					continue
-				}
-				enc.mu.Lock()
-				now := time.Now()
-				currentCount := enc.counter
-
-				deltaCounts := currentCount - enc.lastReadCount
-				elapsedSec := now.Sub(enc.lastReadTime).Seconds()
-
-				if elapsedSec > 0 {
-					enc.rpm = (float64(deltaCounts) / countsPerRev) * (60.0 / elapsedSec)
-				}
-
-				enc.lastReadCount = currentCount
-				enc.lastReadTime = now
-				enc.mu.Unlock()
-			}
-		}
-	}()
 
 	// Create Fiber app
 	app := fiber.New(fiber.Config{
@@ -194,15 +41,7 @@ func main() {
 		data := getEncoderData()
 		unit := c.Query("unit", "mm") // Default to mm
 		c.Type("html")
-		return Page(data, unit).Render(c)
-	})
-
-	registerEncoderDebugRoutes(app)
-
-	// API endpoint to get encoder data (JSON)
-	app.Get("/api/encoder", func(c *fiber.Ctx) error {
-		data := getEncoderData()
-		return c.JSON(data)
+		return page(data, unit).Render(c)
 	})
 
 	// HTMX endpoint that returns HTML fragment
@@ -210,7 +49,7 @@ func main() {
 		data := getEncoderData()
 		unit := c.Query("unit", "mm") // Default to mm
 		c.Type("html")
-		return EncoderFragment(data, unit).Render(c)
+		return encoderFragment(data, unit).Render(c)
 	})
 
 	// Cycle units endpoint - redirects to page with new unit
@@ -246,48 +85,21 @@ func main() {
 		if err := clearHardwareCounters(); err != nil {
 			return c.Status(500).SendString(err.Error())
 		}
-		for _, enc := range encoders {
-			if enc != nil {
-				enc.mu.Lock()
-				enc.counter = 0
-				enc.lastReadCount = 0
-				enc.mu.Unlock()
-			}
-		}
-		pointsMu.Lock()
-		points = []Point{}
-		pointsMu.Unlock()
+		zeroEncoderCounts()
+		clearCapturePoints()
 		playBeep()
 		return c.SendStatus(200)
 	})
 
-	// Add point endpoint - saves current coordinates
 	app.Post("/api/points/add", func(c *fiber.Ctx) error {
-		data := getEncoderData()
-		pointsMu.Lock()
-		points = append(points, Point{
-			X: data.X.Distance,
-			Y: data.Y.Distance,
-			Z: data.Z.Distance,
-		})
-		pointsMu.Unlock()
+		addCapturePoint()
 		playBeep()
 		return c.SendStatus(200)
 	})
 
-	// Get point count endpoint - returns HTML fragment or JSON
 	app.Get("/api/points/count", func(c *fiber.Ctx) error {
-		pointsMu.RLock()
-		count := len(points)
-		pointsMu.RUnlock()
-
-		// Check if client wants JSON (for JavaScript fetch)
-		if c.Get("Accept") == "application/json" || c.Query("json") == "true" {
-			return c.JSON(fiber.Map{"count": count})
-		}
-
 		c.Type("html")
-		return g.Text(fmt.Sprintf("Points: %d", count)).Render(c)
+		return g.Text(fmt.Sprintf("Points: %d", capturePointCount())).Render(c)
 	})
 
 	// Check and save points endpoint - validates points before saving
@@ -301,11 +113,8 @@ func main() {
 			filename += ".asc"
 		}
 
-		pointsMu.RLock()
-		count := len(points)
-		pointsMu.RUnlock()
+		count := capturePointCount()
 
-		// If no points, return error message using hx-swap-oob
 		if count == 0 {
 			c.Type("html")
 			// Return empty response for main swap, error message via oob
@@ -329,19 +138,10 @@ func main() {
 			filename += ".asc"
 		}
 
-		pointsMu.Lock()
-		if len(points) == 0 {
-			pointsMu.Unlock()
+		ascData, err := capturePointsASC()
+		if err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "No points to save"})
 		}
-
-		// Create ASC content - space-separated X Y Z format for FreeCAD
-		var ascData string
-		for _, p := range points {
-			ascData += fmt.Sprintf("%.6f %.6f %.6f\n", p.X, p.Y, p.Z)
-		}
-
-		pointsMu.Unlock()
 
 		playBeep()
 		// Set headers for file download
@@ -442,82 +242,13 @@ func writeBeepWAV(w io.Writer, freqHz float64, durationSec float64) error {
 	return nil
 }
 
-func getEncoderData() EncoderData {
-	var data EncoderData
-	for i, enc := range encoders {
-		if enc == nil {
-			continue
-		}
-		enc.mu.RLock()
-		count := enc.counter
-		rpm := enc.rpm
-		label := enc.label
-		enc.mu.RUnlock()
-
-		// Calculate distance: (count / countsPerRev) × circumference
-		distance := (float64(count) / countsPerRev) * wheelCircumference
-
-		values := EncoderValues{
-			Count:    count,
-			RPM:      rpm,
-			Distance: distance,
-			Label:    label,
-		}
-
-		switch i {
-		case 0:
-			data.X = values
-		case 1:
-			data.Xp = values
-		case 2:
-			data.Y = values
-		case 3:
-			data.Z = values
-		}
-	}
-	return data
-}
-
-func Page(data EncoderData, unit string) g.Node {
+func page(data encoderData, unit string) g.Node {
 	return HTML(
 		Head(
 			Meta(Charset("utf-8")),
 			Meta(Name("viewport"), Content("width=device-width, initial-scale=1")),
 			TitleEl(g.Text("Rotary Encoder Monitor")),
 			Script(Src("https://unpkg.com/htmx.org@2.0.3/dist/htmx.min.js")),
-			Script(g.Raw(`
-				function checkPointsCount() {
-					return fetch('/api/points/count?json=true', {
-						headers: { 'Accept': 'application/json' }
-					})
-						.then(r => r.json())
-						.then(data => data.count);
-				}
-				document.addEventListener('DOMContentLoaded', function() {
-					const saveLink = document.getElementById('save-link');
-					const filenameInput = document.getElementById('filename-input');
-					if (saveLink && filenameInput) {
-						saveLink.addEventListener('click', async function(e) {
-							e.preventDefault();
-							// Check if there are any points before saving
-							const count = await checkPointsCount();
-							if (count === 0) {
-								alert('No points to save. Please collect some points first.');
-								return;
-							}
-							let filename = filenameInput.value.trim() || 'points.asc';
-							// Add .asc extension if not present
-							if (filename.length < 4 || filename.slice(-4) !== '.asc') {
-								filename += '.asc';
-							}
-							window.location.href = '/api/points/save?filename=' + encodeURIComponent(filename);
-							setTimeout(function() {
-								htmx.trigger('#points-count', 'htmx:trigger');
-							}, 500);
-						});
-					}
-				});
-			`)),
 			StyleEl(g.Raw(`
 				@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
 				* {
@@ -792,7 +523,7 @@ func Page(data EncoderData, unit string) g.Node {
 		),
 		Body(
 			Div(Class("container"),
-				EncoderFragment(data, unit),
+				encoderFragment(data, unit),
 				Div(Class("button-container"),
 					Button(
 						Class("point-button"),
@@ -875,7 +606,7 @@ func chipRef(label string) string {
 	}
 }
 
-func EncoderFragment(data EncoderData, unit string) g.Node {
+func encoderFragment(data encoderData, unit string) g.Node {
 	return Div(
 		hx.Get("/api/encoder/htmx"),
 		hx.Trigger("every 200ms"),
@@ -1024,7 +755,7 @@ func deltaReadout(deltaMM float64, selectedUnit string) (text string, unitLabel 
 	return text, unitLabel
 }
 
-func encoderDisplayXMerged(x, xp EncoderValues, selectedUnit string) g.Node {
+func encoderDisplayXMerged(x, xp encoderValues, selectedUnit string) g.Node {
 	mainText, mainUnitLabel, otherUnitsLine := distanceReadout(x.Distance, selectedUnit)
 	deltaMM := xp.Distance - x.Distance
 	isZero := math.Abs(deltaMM) < 1e-6
@@ -1075,7 +806,7 @@ func encoderDisplayXMerged(x, xp EncoderValues, selectedUnit string) g.Node {
 	)
 }
 
-func encoderDisplay(label string, values EncoderValues, selectedUnit string) g.Node {
+func encoderDisplay(label string, values encoderValues, selectedUnit string) g.Node {
 	selectedDisplay, unitLabel, otherUnitsLine := distanceReadout(values.Distance, selectedUnit)
 	return Div(
 		Class("encoder-card"),
