@@ -76,7 +76,7 @@ chmod 0755 /usr/local/bin/closinuf-browser.sh
 
 cat << BROWSER_UNIT > /etc/systemd/system/closinuf-browser.service
 [Unit]
-Description=Open Chromium fullscreen for closinuf on :3000
+Description=Open Chromium fullscreen for closinuf (3D point scanner)
 After=network-online.target graphical.target closinuf.service
 Wants=network-online.target closinuf.service
 
@@ -96,7 +96,7 @@ BROWSER_UNIT
 
 cat << UNIT > /etc/systemd/system/closinuf.service
 [Unit]
-Description=closinuf (Fiber on :3000)
+Description=closinuf 3D point scanner
 After=network-online.target
 Wants=network-online.target
 

@@ -1,6 +1,6 @@
 # closinuf
 
-**3D point catcher** — live 3D coordinates from four quadrature encoders on a Raspberry Pi, with a small web UI, foot‑switch capture, and FreeCAD‑friendly export.
+**3D point scanner** — live 3D coordinates from four quadrature encoders on a Raspberry Pi, with a small web UI, foot‑switch capture, and FreeCAD‑friendly export.
 
 ## What it does
 
@@ -50,7 +50,7 @@ journalctl -u closinuf -f
 
 **Touch keyboard:** fullscreen Chromium can block some on‑screen keyboards; if the filename field stays hidden behind the keyboard, try launching the browser **maximized** instead of fullscreen (edit the `chromium` line in `/usr/local/bin/closinuf-browser.sh`). The UI adds extra **bottom padding** so you can scroll content above the keyboard.
 
-**Capture beep:** install **`alsa-utils`** (`aplay`) or ensure **`paplay`** works so the Pi can play the short tone on capture.
+**Capture beep:** install **`alsa-utils`** (`aplay`) so the Pi can play the short tone on capture.
 
 ## Manual run (development)
 
